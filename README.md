@@ -1,17 +1,25 @@
-# no_smoke
+# No Smoke
 
-A new Flutter project.
+No Smoke, sigara bırakma yolculuğunu desteklemek için geliştirilmiş bir Flutter mobil uygulamasıdır. Uygulama;
 
-## Getting Started
+- başlangıç anketi
+- nefes testi
+- risk değerlendirmesi
+- geçmiş anket kayıtları
+- değerlendirme ekranı
 
-This project is a starting point for a Flutter application.
+ile kullanıcıların ilerlemesini takip eder.
 
-A few resources to get you started if this is your first Flutter project:
+## Özellikler
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- Anket ile kullanıcı bilgilerini toplama
+- Nefes testi ile risk analizi
+- Sonuç ekranı ve değerlendirme akışı
+- Geçmiş kayıtları saklama ve görüntüleme
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Geliştirme
+
+```bash
+flutter pub get
+flutter run
+```
