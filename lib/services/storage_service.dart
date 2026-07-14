@@ -8,6 +8,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/adaptive_plan.dart';
 import '../models/behavior_dashboard.dart';
+import '../models/protocol_violation.dart';
 import '../models/sensor_usage_event.dart';
 import '../models/survey_record.dart';
 import '../models/task_history.dart';
@@ -23,6 +24,7 @@ class StorageService {
   static const _sensorUsageTable = 'sensor_usage_events';
   static const _behaviorSnapshotTable = 'behavior_snapshots';
   static const _taskFollowUpTable = 'task_followups';
+  static const _protocolViolationTable = 'protocol_violations';
   static const _behaviorDirtyKey = 'behavior_dirty';
   static const _registrationCompletedKey = 'registration_completed';
   static const _isProfileCompletedKey = 'isProfileCompleted';
@@ -40,7 +42,7 @@ class StorageService {
     final path = p.join(documentsDirectory.path, 'no_smoke.db');
     return openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE $_tableName (
@@ -68,6 +70,7 @@ class StorageService {
         await _ensureSensorUsageTable(db);
         await _ensureBehaviorSnapshotTable(db);
         await _ensureTaskFollowUpTable(db);
+        await _ensureProtocolViolationTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         await _ensureColumn(db, 'packsPerDay', 'TEXT');
@@ -82,6 +85,7 @@ class StorageService {
         await _ensureSensorUsageTable(db);
         await _ensureBehaviorSnapshotTable(db);
         await _ensureTaskFollowUpTable(db);
+        await _ensureProtocolViolationTable(db);
       },
     );
   }
@@ -182,6 +186,20 @@ class StorageService {
         scheduledAt TEXT NOT NULL,
         status TEXT NOT NULL,
         createdAt TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future<void> _ensureProtocolViolationTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_protocolViolationTable (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        taskTitle TEXT,
+        details TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        resolved INTEGER NOT NULL
       )
     ''');
   }
@@ -587,6 +605,52 @@ class StorageService {
       'status': 'pending',
       'createdAt': now.toIso8601String(),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> saveProtocolViolation({
+    required String type,
+    required String severity,
+    String? taskTitle,
+    required String details,
+    DateTime? createdAt,
+    bool resolved = false,
+  }) async {
+    final db = await database;
+    final now = createdAt ?? DateTime.now();
+    await db.insert(_protocolViolationTable, {
+      'id': 'vio_${now.microsecondsSinceEpoch}',
+      'type': type,
+      'severity': severity,
+      'taskTitle': taskTitle,
+      'details': details,
+      'createdAt': now.toIso8601String(),
+      'resolved': resolved ? 1 : 0,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<ProtocolViolation>> loadProtocolViolations({
+    int limit = 250,
+  }) async {
+    final db = await database;
+    final rows = await db.query(
+      _protocolViolationTable,
+      orderBy: 'createdAt DESC',
+      limit: limit,
+    );
+
+    return rows
+        .map(
+          (row) => ProtocolViolation(
+            id: row['id'] as String,
+            type: row['type'] as String,
+            severity: row['severity'] as String,
+            taskTitle: row['taskTitle'] as String?,
+            details: row['details'] as String,
+            createdAt: DateTime.parse(row['createdAt'] as String),
+            resolved: ((row['resolved'] as num?)?.toInt() ?? 0) == 1,
+          ),
+        )
+        .toList();
   }
 
   Future<List<Map<String, dynamic>>> loadPendingTaskFollowUps() async {
