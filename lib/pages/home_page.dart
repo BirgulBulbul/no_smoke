@@ -65,8 +65,9 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _taskActionSubscription =
-        NotificationService.taskActionStream.listen(_handleTaskNotificationAction);
+    _taskActionSubscription = NotificationService.taskActionStream.listen(
+      _handleTaskNotificationAction,
+    );
     _loadHomeMetrics();
   }
 
@@ -194,8 +195,14 @@ class _HomePageState extends State<HomePage> {
         taskResult: 'started',
         completedAt: now,
       );
-      await _storageService.saveTaskFollowUp(taskTitle: taskTitle, scheduledAt: followUpAt);
-      await NotificationService.scheduleTaskFollowUpReminder(taskTitle: taskTitle, delay: delay);
+      await _storageService.saveTaskFollowUp(
+        taskTitle: taskTitle,
+        scheduledAt: followUpAt,
+      );
+      await NotificationService.scheduleTaskFollowUpReminder(
+        taskTitle: taskTitle,
+        delay: delay,
+      );
       _scheduleLocalFollowUp(taskTitle, followUpAt);
       if (!mounted) {
         return;
@@ -209,7 +216,10 @@ class _HomePageState extends State<HomePage> {
     if (actionId == 'task_not_now') {
       final delay = const Duration(minutes: 10);
       final followUpAt = DateTime.now().add(delay);
-      await _storageService.saveTaskFollowUp(taskTitle: taskTitle, scheduledAt: followUpAt);
+      await _storageService.saveTaskFollowUp(
+        taskTitle: taskTitle,
+        scheduledAt: followUpAt,
+      );
       await NotificationService.scheduleFirstTaskTriggerNotification(
         taskDescription: taskTitle,
         delay: delay,
@@ -240,11 +250,13 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadHomeMetrics() async {
-    final registrationCompleted = await _storageService.loadInitialRegistrationCompleted();
+    final registrationCompleted = await _storageService
+        .loadInitialRegistrationCompleted();
     final lastDate = await _storageService.loadLastSurveyDate();
     final latestBreath = await _storageService.loadLatestBreathRecord();
     final metrics = await _storageService.loadBreathMetrics();
-    final consecutiveSmokingSummary = await _storageService.loadConsecutiveSmokingSummary();
+    final consecutiveSmokingSummary = await _storageService
+        .loadConsecutiveSmokingSummary();
     final behavior = registrationCompleted
         ? await _storageService.loadBehaviorDashboard()
         : await _storageService.loadLatestBehaviorSnapshot();
@@ -258,19 +270,28 @@ class _HomePageState extends State<HomePage> {
       _lastBreathText = latestBreath == null
           ? 'noRecordYet'
           : '${latestBreath.completedAt.day}/${latestBreath.completedAt.month}/${latestBreath.completedAt.year} • ${latestBreath.exhaleTestSeconds}${context.t('secShort')} / ${latestBreath.inhaleTestSeconds}${context.t('secShort')}';
-        _latestExhaleSeconds = latestBreath?.exhaleTestSeconds ?? 0;
-        _latestInhaleSeconds = latestBreath?.inhaleTestSeconds ?? 0;
-        final now = DateTime.now();
-        final doneToday = latestBreath != null &&
+      _latestExhaleSeconds = latestBreath?.exhaleTestSeconds ?? 0;
+      _latestInhaleSeconds = latestBreath?.inhaleTestSeconds ?? 0;
+      final now = DateTime.now();
+      final doneToday =
+          latestBreath != null &&
           latestBreath.completedAt.year == now.year &&
           latestBreath.completedAt.month == now.month &&
           latestBreath.completedAt.day == now.day;
-        _dailyBreathStatus = doneToday ? 'breathTestDoneToday' : 'breathTestPendingToday';
+      _dailyBreathStatus = doneToday
+          ? 'breathTestDoneToday'
+          : 'breathTestPendingToday';
       _dailyAverage = metrics['dailyAverage'] ?? 0;
       _weeklyAverage = metrics['weeklyAverage'] ?? 0;
       _monthlyAverage = metrics['monthlyAverage'] ?? 0;
-        _weeklyImprovementText = _calculateImprovementLabel(_weeklyAverage, _monthlyAverage);
-        _monthlyImprovementText = _calculateImprovementLabel(_monthlyAverage, _dailyAverage);
+      _weeklyImprovementText = _calculateImprovementLabel(
+        _weeklyAverage,
+        _monthlyAverage,
+      );
+      _monthlyImprovementText = _calculateImprovementLabel(
+        _monthlyAverage,
+        _dailyAverage,
+      );
       _adaptiveRiskScore = behavior?.riskScore ?? 0;
       _riskyTriggers = behavior?.riskyTriggers ?? const [];
       _riskyHours = behavior?.riskyHours ?? const [];
@@ -281,17 +302,23 @@ class _HomePageState extends State<HomePage> {
       _predictedTrigger = behavior?.predictedTrigger ?? '...';
       _predictionConfidence = behavior?.predictionConfidence ?? 0;
       _weeklyRiskTarget = behavior?.plan.weeklyRiskTarget ?? 0;
-      _consecutiveSmokingLatestText = consecutiveSmokingSummary['latest'] ?? context.t('noRecordYet');
-      _consecutiveSmokingPreviousText = consecutiveSmokingSummary['previous'] ?? context.t('noRecordYet');
-      _consecutiveSmokingTrendText = consecutiveSmokingSummary['trend'] ?? context.t('noRecordYet');
-      _consecutiveSmokingStatusText = consecutiveSmokingSummary['status'] ?? context.t('noRecordYet');
+      _consecutiveSmokingLatestText =
+          consecutiveSmokingSummary['latest'] ?? context.t('noRecordYet');
+      _consecutiveSmokingPreviousText =
+          consecutiveSmokingSummary['previous'] ?? context.t('noRecordYet');
+      _consecutiveSmokingTrendText =
+          consecutiveSmokingSummary['trend'] ?? context.t('noRecordYet');
+      _consecutiveSmokingStatusText =
+          consecutiveSmokingSummary['status'] ?? context.t('noRecordYet');
       for (final task in _todaysTasks) {
         _taskStates.putIfAbsent(task, () => 'new');
       }
       _pendingFollowUps = pendingFollowUps;
     });
 
-    if (widget.autoCompleteRegistrationOnLoad && !_registrationCompleted && !_isCompletingRegistration) {
+    if (widget.autoCompleteRegistrationOnLoad &&
+        !_registrationCompleted &&
+        !_isCompletingRegistration) {
       unawaited(_completeRegistration());
     }
 
@@ -304,6 +331,7 @@ class _HomePageState extends State<HomePage> {
     if (_todaysTasks.isEmpty) {
       return;
     }
+    var index = 0;
     for (final task in _todaysTasks) {
       if (_notifiedTaskTitles.contains(task)) {
         continue;
@@ -311,11 +339,21 @@ class _HomePageState extends State<HomePage> {
       if ((_taskStates[task] ?? 'new') != 'new') {
         continue;
       }
-      await NotificationService.showFirstTaskTriggerNotification(
-        taskTitle: context.t('todaysTasks'),
+      final delay = Duration(minutes: 10 + (index * 10));
+      await NotificationService.scheduleFirstTaskTriggerNotification(
         taskDescription: task,
+        delay: delay,
       );
+
+      final followUpAt = DateTime.now().add(delay);
+      await _storageService.saveTaskFollowUp(
+        taskTitle: task,
+        scheduledAt: followUpAt,
+      );
+      _scheduleLocalFollowUp(task, followUpAt);
+
       _notifiedTaskTitles.add(task);
+      index += 1;
     }
   }
 
@@ -353,7 +391,8 @@ class _HomePageState extends State<HomePage> {
     SurveyRecord? latestSurvey;
     SurveyRecord? latestBreath;
     for (final record in records.reversed) {
-      if (latestSurvey == null && (record.type == 'initial' || record.type == 'weekly')) {
+      if (latestSurvey == null &&
+          (record.type == 'initial' || record.type == 'weekly')) {
         latestSurvey = record;
       }
       if (latestBreath == null && record.type == 'breath_test') {
@@ -365,15 +404,20 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (latestSurvey == null) {
-      throw StateError('Initial/weekly survey record not found while creating profile snapshot.');
+      throw StateError(
+        'Initial/weekly survey record not found while creating profile snapshot.',
+      );
     }
     if (latestBreath == null) {
-      throw StateError('Breath test record not found while creating profile snapshot.');
+      throw StateError(
+        'Breath test record not found while creating profile snapshot.',
+      );
     }
 
     final latestContext = contextMap[latestSurvey.id];
     final healthConditions =
-        (latestContext?['healthConditions'] as List<String>?) ?? const <String>[];
+        (latestContext?['healthConditions'] as List<String>?) ??
+        const <String>[];
     final triggers = triggerMap[latestSurvey.id] ?? const <String>[];
 
     await _storageService.saveUserProfileSnapshot(
@@ -384,7 +428,8 @@ class _HomePageState extends State<HomePage> {
         packsPerDay: latestSurvey.packsPerDay,
         firstCigaretteRange: 'unknown',
         smokeFreeRange: 'unknown',
-        consecutiveSmokingHabit: latestSurvey.consecutiveSmokingHabit ?? 'Hayır',
+        consecutiveSmokingHabit:
+            latestSurvey.consecutiveSmokingHabit ?? 'Hayır',
         consecutiveSmokingCount: latestSurvey.consecutiveSmokingCount,
         triggers: triggers,
         healthConditions: healthConditions,
@@ -416,7 +461,9 @@ class _HomePageState extends State<HomePage> {
       }
 
       try {
-        debugPrint('[CompleteRegistration] Running _createInitialProfileSnapshot');
+        debugPrint(
+          '[CompleteRegistration] Running _createInitialProfileSnapshot',
+        );
         await _createInitialProfileSnapshot();
       } catch (error, stackTrace) {
         debugPrint('[CompleteRegistration] Profile creation failed: $error');
@@ -429,9 +476,13 @@ class _HomePageState extends State<HomePage> {
       try {
         await _storageService.loadBehaviorDashboard();
       } catch (error, stackTrace) {
-        debugPrint('[CompleteRegistration] loadBehaviorDashboard failed: $error');
+        debugPrint(
+          '[CompleteRegistration] loadBehaviorDashboard failed: $error',
+        );
         debugPrintStack(stackTrace: stackTrace);
-        _showRegistrationError('Risk analizi oluşturulamadı. Lütfen tekrar deneyin.');
+        _showRegistrationError(
+          'Risk analizi oluşturulamadı. Lütfen tekrar deneyin.',
+        );
         return;
       }
       if (!mounted) {
@@ -441,7 +492,7 @@ class _HomePageState extends State<HomePage> {
 
       debugPrint('[CompleteRegistration] Creating first task: $firstTask');
       final createdAt = DateTime.now();
-      const followUpDelay = Duration(minutes: 15);
+      const followUpDelay = Duration(minutes: 10);
       final followUpAt = createdAt.add(followUpDelay);
 
       try {
@@ -452,7 +503,9 @@ class _HomePageState extends State<HomePage> {
         );
         debugPrint('[CompleteRegistration] saveTaskResult(created) ok');
       } catch (error, stackTrace) {
-        debugPrint('[CompleteRegistration] saveTaskResult(created) failed: $error');
+        debugPrint(
+          '[CompleteRegistration] saveTaskResult(created) failed: $error',
+        );
         debugPrintStack(stackTrace: stackTrace);
       }
 
@@ -461,9 +514,13 @@ class _HomePageState extends State<HomePage> {
           taskTitle: firstTask,
           duration: followUpDelay,
         );
-        debugPrint('[CompleteRegistration] showTaskTimerStartedNotification ok');
+        debugPrint(
+          '[CompleteRegistration] showTaskTimerStartedNotification ok',
+        );
       } catch (error, stackTrace) {
-        debugPrint('[CompleteRegistration] showTaskTimerStartedNotification failed (non-blocking): $error');
+        debugPrint(
+          '[CompleteRegistration] showTaskTimerStartedNotification failed (non-blocking): $error',
+        );
         debugPrintStack(stackTrace: stackTrace);
       }
 
@@ -479,7 +536,9 @@ class _HomePageState extends State<HomePage> {
         _scheduleLocalFollowUp(firstTask, followUpAt);
         debugPrint('[CompleteRegistration] task follow-up timer started (15m)');
       } catch (error, stackTrace) {
-        debugPrint('[CompleteRegistration] task follow-up timer scheduling failed (non-blocking): $error');
+        debugPrint(
+          '[CompleteRegistration] task follow-up timer scheduling failed (non-blocking): $error',
+        );
         debugPrintStack(stackTrace: stackTrace);
       }
 
@@ -488,9 +547,13 @@ class _HomePageState extends State<HomePage> {
         await _storageService.saveInitialRegistrationCompleted(true);
         await _storageService.saveIsProfileCompleted(true);
       } catch (error, stackTrace) {
-        debugPrint('[CompleteRegistration] save registration flags failed: $error');
+        debugPrint(
+          '[CompleteRegistration] save registration flags failed: $error',
+        );
         debugPrintStack(stackTrace: stackTrace);
-        _showRegistrationError('Kayıt bayrağı kaydedilemedi. Lütfen tekrar deneyin.');
+        _showRegistrationError(
+          'Kayıt bayrağı kaydedilemedi. Lütfen tekrar deneyin.',
+        );
         return;
       }
       debugPrint('[CompleteRegistration] Refreshing Home metrics');
@@ -507,7 +570,9 @@ class _HomePageState extends State<HomePage> {
     } catch (error, stackTrace) {
       debugPrint('[CompleteRegistration] Failed: $error');
       debugPrintStack(stackTrace: stackTrace);
-      _showRegistrationError('Kaydı tamamlanırken bir hata oluştu. Lütfen tekrar deneyin.');
+      _showRegistrationError(
+        'Kaydı tamamlanırken bir hata oluştu. Lütfen tekrar deneyin.',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -586,7 +651,9 @@ class _HomePageState extends State<HomePage> {
                     onPressed: () async {
                       await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const TaskFollowUpPage()),
+                        MaterialPageRoute(
+                          builder: (_) => const TaskFollowUpPage(),
+                        ),
                       );
                       if (!mounted) {
                         return;
@@ -604,7 +671,9 @@ class _HomePageState extends State<HomePage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _isCompletingRegistration ? null : _completeRegistration,
+                    onPressed: _isCompletingRegistration
+                        ? null
+                        : _completeRegistration,
                     child: Text(context.t('completeRegistration')),
                   ),
                 ),
@@ -616,22 +685,26 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildAdaptiveInsightsCard() {
-    final triggers = _riskyTriggers.isEmpty ? context.t('noRecordYet') : _riskyTriggers.join(', ');
-    final hours = _riskyHours.isEmpty ? context.t('noRecordYet') : _riskyHours.join(', ');
+    final triggers = _riskyTriggers.isEmpty
+        ? context.t('noRecordYet')
+        : _riskyTriggers.join(', ');
+    final hours = _riskyHours.isEmpty
+        ? context.t('noRecordYet')
+        : _riskyHours.join(', ');
     final breathTrend = _breathTrendText == 'Improving'
-      ? context.t('trendImproving')
-      : _breathTrendText == 'Declining'
+        ? context.t('trendImproving')
+        : _breathTrendText == 'Declining'
         ? context.t('trendDeclining')
         : _breathTrendText == 'Stable'
-          ? context.t('trendStable')
-          : _breathTrendText;
+        ? context.t('trendStable')
+        : _breathTrendText;
     final progress = _progressSummaryText == 'Improving'
         ? context.t('trendImproving')
         : _progressSummaryText == 'Declining'
-            ? context.t('trendDeclining')
-            : _progressSummaryText == 'Stable'
-                ? context.t('trendStable')
-                : _progressSummaryText;
+        ? context.t('trendDeclining')
+        : _progressSummaryText == 'Stable'
+        ? context.t('trendStable')
+        : _progressSummaryText;
 
     return Card(
       child: Padding(
@@ -656,7 +729,9 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 6),
             Text('${context.t('predictedTrigger')}: $_predictedTrigger'),
             const SizedBox(height: 6),
-            Text('${context.t('predictionConfidence')}: %$_predictionConfidence'),
+            Text(
+              '${context.t('predictionConfidence')}: %$_predictionConfidence',
+            ),
             const SizedBox(height: 6),
             Text('${context.t('weeklyRiskTarget')}: $_weeklyRiskTarget / 100'),
           ],
@@ -666,7 +741,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildTodayTaskCard() {
-    final tasks = _todaysTasks.isEmpty ? <String>[context.t('noTaskToday')] : _todaysTasks;
+    final tasks = _todaysTasks.isEmpty
+        ? <String>[context.t('noTaskToday')]
+        : _todaysTasks;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -681,7 +758,9 @@ class _HomePageState extends State<HomePage> {
             if (_pendingFollowUps.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Text('${context.t('taskFollowUpPendingCount')}: ${_pendingFollowUps.length}'),
+                child: Text(
+                  '${context.t('taskFollowUpPendingCount')}: ${_pendingFollowUps.length}',
+                ),
               ),
             ...tasks.map((task) {
               if (_todaysTasks.isEmpty) {
@@ -694,10 +773,10 @@ class _HomePageState extends State<HomePage> {
               final translatedState = state == 'completed'
                   ? context.t('taskStateCompleted')
                   : state == 'failed'
-                      ? context.t('taskStateFailed')
-                      : state == 'deferred'
-                          ? context.t('taskStateDeferred')
-                          : context.t('taskStateNew');
+                  ? context.t('taskStateFailed')
+                  : state == 'deferred'
+                  ? context.t('taskStateDeferred')
+                  : context.t('taskStateNew');
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Column(
@@ -705,10 +784,7 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Text('- $task'),
                     const SizedBox(height: 6),
-                    Text(
-                      translatedState,
-                      style: const TextStyle(fontSize: 12),
-                    ),
+                    Text(translatedState, style: const TextStyle(fontSize: 12)),
                   ],
                 ),
               );
@@ -720,7 +796,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildBreathTrendCard() {
-    final maxValue = [_dailyAverage, _weeklyAverage, _monthlyAverage].reduce((a, b) => a > b ? a : b).clamp(1, 100).toDouble();
+    final maxValue = [
+      _dailyAverage,
+      _weeklyAverage,
+      _monthlyAverage,
+    ].reduce((a, b) => a > b ? a : b).clamp(1, 100).toDouble();
     final values = [
       (_dailyAverage / maxValue).clamp(0.0, 1.0),
       (_weeklyAverage / maxValue).clamp(0.0, 1.0),
@@ -742,13 +822,21 @@ class _HomePageState extends State<HomePage> {
               children: [
                 _buildTrendBar(context.t('daily'), values[0], _dailyAverage),
                 _buildTrendBar(context.t('weekly'), values[1], _weeklyAverage),
-                _buildTrendBar(context.t('monthly'), values[2], _monthlyAverage),
+                _buildTrendBar(
+                  context.t('monthly'),
+                  values[2],
+                  _monthlyAverage,
+                ),
               ],
             ),
             const SizedBox(height: 10),
-            Text('${context.t('weeklyImprovement')}: ${_translateTrend(_weeklyImprovementText)}'),
+            Text(
+              '${context.t('weeklyImprovement')}: ${_translateTrend(_weeklyImprovementText)}',
+            ),
             const SizedBox(height: 6),
-            Text('${context.t('monthlyImprovement')}: ${_translateTrend(_monthlyImprovementText)}'),
+            Text(
+              '${context.t('monthlyImprovement')}: ${_translateTrend(_monthlyImprovementText)}',
+            ),
           ],
         ),
       ),
@@ -774,7 +862,11 @@ class _HomePageState extends State<HomePage> {
                 widthFactor: 1,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: ratio >= 0.7 ? Colors.green : ratio >= 0.4 ? Colors.orange : Colors.red,
+                    color: ratio >= 0.7
+                        ? Colors.green
+                        : ratio >= 0.4
+                        ? Colors.orange
+                        : Colors.red,
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
@@ -782,7 +874,10 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 8),
             Text(label, style: const TextStyle(fontSize: 12)),
-            Text('${value.toStringAsFixed(1)}${context.t('secShort')}', style: const TextStyle(fontSize: 11)),
+            Text(
+              '${value.toStringAsFixed(1)}${context.t('secShort')}',
+              style: const TextStyle(fontSize: 11),
+            ),
           ],
         ),
       ),
@@ -791,23 +886,23 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildConsecutiveSmokingCard() {
     final latest = _consecutiveSmokingLatestText == 'noRecordYet'
-      ? context.t('noRecordYet')
-      : _consecutiveSmokingLatestText;
+        ? context.t('noRecordYet')
+        : _consecutiveSmokingLatestText;
     final status = _consecutiveSmokingStatusText == 'noRecordYet'
-      ? context.t('noRecordYet')
-      : _consecutiveSmokingStatusText;
+        ? context.t('noRecordYet')
+        : _consecutiveSmokingStatusText;
     final trend = _consecutiveSmokingTrendText == 'noRecordYet'
-      ? context.t('noRecordYet')
-      : _consecutiveSmokingTrendText == 'trendStable'
+        ? context.t('noRecordYet')
+        : _consecutiveSmokingTrendText == 'trendStable'
         ? context.t('trendStable')
         : _consecutiveSmokingTrendText == 'trendImproving'
-          ? context.t('trendImproving')
-          : _consecutiveSmokingTrendText == 'trendDeclining'
-            ? context.t('trendDeclining')
-            : _consecutiveSmokingTrendText;
+        ? context.t('trendImproving')
+        : _consecutiveSmokingTrendText == 'trendDeclining'
+        ? context.t('trendDeclining')
+        : _consecutiveSmokingTrendText;
     final previous = _consecutiveSmokingPreviousText == 'noRecordYet'
-      ? context.t('noRecordYet')
-      : _consecutiveSmokingPreviousText == 'firstEvaluation'
+        ? context.t('noRecordYet')
+        : _consecutiveSmokingPreviousText == 'firstEvaluation'
         ? context.t('firstEvaluation')
         : _consecutiveSmokingPreviousText;
 

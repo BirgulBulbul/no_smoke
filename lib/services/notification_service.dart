@@ -11,7 +11,8 @@ import 'language_service.dart';
 import 'phone_state_service.dart';
 
 class NotificationService {
-  static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  static final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
   static final StreamController<Map<String, String>> _taskActionController =
       StreamController<Map<String, String>>.broadcast();
   static GlobalKey<NavigatorState>? _navigatorKey;
@@ -28,9 +29,12 @@ class NotificationService {
   static const String _categoryTaskStart = 'task_start_category';
   static const String _categoryTaskFollowUp = 'task_followup_category';
 
-  static Stream<Map<String, String>> get taskActionStream => _taskActionController.stream;
+  static Stream<Map<String, String>> get taskActionStream =>
+      _taskActionController.stream;
 
-  static Future<void> initialize({GlobalKey<NavigatorState>? navigatorKey}) async {
+  static Future<void> initialize({
+    GlobalKey<NavigatorState>? navigatorKey,
+  }) async {
     _navigatorKey = navigatorKey;
     final code = await LanguageService.loadSelectedLanguageCode();
     tz.initializeTimeZones();
@@ -44,12 +48,16 @@ class NotificationService {
               DarwinNotificationAction.plain(
                 _actionTaskDone,
                 _text(code, 'taskActionDone'),
-                options: <DarwinNotificationActionOption>{DarwinNotificationActionOption.foreground},
+                options: <DarwinNotificationActionOption>{
+                  DarwinNotificationActionOption.foreground,
+                },
               ),
               DarwinNotificationAction.plain(
                 _actionTaskNotNow,
                 _text(code, 'taskActionNotNow'),
-                options: <DarwinNotificationActionOption>{DarwinNotificationActionOption.foreground},
+                options: <DarwinNotificationActionOption>{
+                  DarwinNotificationActionOption.foreground,
+                },
               ),
             ],
           ),
@@ -59,12 +67,16 @@ class NotificationService {
               DarwinNotificationAction.plain(
                 _actionSmokedYes,
                 _text(code, 'yes'),
-                options: <DarwinNotificationActionOption>{DarwinNotificationActionOption.foreground},
+                options: <DarwinNotificationActionOption>{
+                  DarwinNotificationActionOption.foreground,
+                },
               ),
               DarwinNotificationAction.plain(
                 _actionSmokedNo,
                 _text(code, 'no'),
-                options: <DarwinNotificationActionOption>{DarwinNotificationActionOption.foreground},
+                options: <DarwinNotificationActionOption>{
+                  DarwinNotificationActionOption.foreground,
+                },
               ),
             ],
           ),
@@ -75,6 +87,18 @@ class NotificationService {
       initSettings,
       onDidReceiveNotificationResponse: _handleNotificationResponse,
     );
+
+    // Request runtime notification permission (Android 13+ and iOS).
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.requestNotificationsPermission();
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >()
+        ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
   static void _handleNotificationResponse(NotificationResponse response) {
@@ -87,22 +111,20 @@ class NotificationService {
     if (type == _typeBreath) {
       final context = _navigatorKey?.currentContext;
       if (context != null) {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const BreathTestPage()),
-        );
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const BreathTestPage()));
       }
       return;
     }
 
     if (type == _typeTaskStart || type == _typeTaskFollowUp) {
       final actionId = response.actionId;
-      _taskActionController.add(
-        {
-          'type': type ?? '',
-          'taskTitle': payload['taskTitle'] ?? '',
-          'actionId': actionId ?? '',
-        },
-      );
+      _taskActionController.add({
+        'type': type ?? '',
+        'taskTitle': payload['taskTitle'] ?? '',
+        'actionId': actionId ?? '',
+      });
     }
   }
 
@@ -112,7 +134,9 @@ class NotificationService {
     }
     try {
       final data = jsonDecode(raw) as Map<String, dynamic>;
-      return data.map((key, value) => MapEntry(key.toString(), value.toString()));
+      return data.map(
+        (key, value) => MapEntry(key.toString(), value.toString()),
+      );
     } catch (_) {
       return null;
     }
@@ -133,6 +157,7 @@ class NotificationService {
           'İlk görev tetikleme',
           importance: Importance.max,
           priority: Priority.high,
+          playSound: true,
           actions: <AndroidNotificationAction>[
             const AndroidNotificationAction(
               _actionTaskDone,
@@ -152,12 +177,7 @@ class NotificationService {
           categoryIdentifier: _categoryTaskStart,
         ),
       ),
-      payload: jsonEncode(
-        {
-          'type': _typeTaskStart,
-          'taskTitle': taskTitle,
-        },
-      ),
+      payload: jsonEncode({'type': _typeTaskStart, 'taskTitle': taskTitle}),
     );
   }
 
@@ -179,6 +199,7 @@ class NotificationService {
           'İlk görev tetikleme',
           importance: Importance.max,
           priority: Priority.high,
+          playSound: true,
           actions: <AndroidNotificationAction>[
             const AndroidNotificationAction(
               _actionTaskDone,
@@ -199,23 +220,31 @@ class NotificationService {
         ),
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-      payload: jsonEncode(
-        {
-          'type': _typeTaskStart,
-          'taskTitle': taskDescription,
-        },
-      ),
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      payload: jsonEncode({
+        'type': _typeTaskStart,
+        'taskTitle': taskDescription,
+      }),
     );
   }
 
-  static Future<void> scheduleDailyBreathReminder({required String sleepTime}) async {
+  static Future<void> scheduleDailyBreathReminder({
+    required String sleepTime,
+  }) async {
     final code = await LanguageService.loadSelectedLanguageCode();
     final parts = sleepTime.split(':');
     final hour = int.tryParse(parts[0]) ?? 21;
     final minute = int.tryParse(parts[1]) ?? 0;
     final now = tz.TZDateTime.now(tz.local);
-    var scheduledDate = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    var scheduledDate = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      hour,
+      minute,
+    );
     scheduledDate = scheduledDate.subtract(const Duration(minutes: 45));
     var finalDate = scheduledDate.isBefore(now)
         ? scheduledDate.add(const Duration(days: 1))
@@ -230,8 +259,8 @@ class NotificationService {
       0,
       _text(code, 'breathReminderTitle'),
       isDriving
-        ? _text(code, 'breathReminderDriving')
-        : _text(code, 'breathReminderBody'),
+          ? _text(code, 'breathReminderDriving')
+          : _text(code, 'breathReminderBody'),
       finalDate,
       const NotificationDetails(
         android: AndroidNotificationDetails(
@@ -245,7 +274,8 @@ class NotificationService {
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.time,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
       payload: jsonEncode({'type': _typeBreath}),
     );
   }
@@ -262,14 +292,16 @@ class NotificationService {
       fireAt = fireAt.add(const Duration(minutes: 20));
     }
 
-    final notificationId = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
+    final notificationId = DateTime.now().millisecondsSinceEpoch.remainder(
+      2147483647,
+    );
 
     await _plugin.zonedSchedule(
       notificationId,
       _text(code, 'taskFollowUpTitlePush'),
       isDriving
-        ? _text(code, 'taskFollowUpQuestionDriving')
-        : '${_text(code, 'taskFollowUpQuestion')}\n$taskTitle',
+          ? _text(code, 'taskFollowUpQuestionDriving')
+          : '${_text(code, 'taskFollowUpQuestion')}\n$taskTitle',
       fireAt,
       NotificationDetails(
         android: AndroidNotificationDetails(
@@ -299,13 +331,9 @@ class NotificationService {
         ),
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-      payload: jsonEncode(
-        {
-          'type': _typeTaskFollowUp,
-          'taskTitle': taskTitle,
-        },
-      ),
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      payload: jsonEncode({'type': _typeTaskFollowUp, 'taskTitle': taskTitle}),
     );
   }
 
@@ -349,12 +377,14 @@ class NotificationService {
       'taskActionNotNow': 'Şimdi Uygun Değil',
       'breathReminderTitle': 'Nefes Testi',
       'breathReminderBody': 'Günlük nefes testi zamanı geldi.',
-      'breathReminderDriving': 'Sürüşte güvenliğiniz için hatırlatma kısa süre ertelendi.',
+      'breathReminderDriving':
+          'Sürüşte güvenliğiniz için hatırlatma kısa süre ertelendi.',
       'taskFollowUpTitlePush': 'Görev Takibi',
       'taskFollowUpQuestion': 'Bu görev sırasında sigara içtiniz mi?',
-      'taskFollowUpQuestionDriving': 'Sürüş sonrası cevaplayın: Bu görev sırasında sigara içtiniz mi?',
+      'taskFollowUpQuestionDriving':
+          'Sürüş sonrası cevaplayın: Bu görev sırasında sigara içtiniz mi?',
       'taskTimerStartedTitle': 'İlk Görev',
-      'taskTimerStartedBody': '15 dakikalık görev başladı:',
+      'taskTimerStartedBody': 'Görev başladı:',
       'taskTimerDuration': 'Sayaç',
       'minutesShort': 'dakika',
     };
@@ -369,9 +399,10 @@ class NotificationService {
       'breathReminderDriving': 'Reminder delayed briefly for driving safety.',
       'taskFollowUpTitlePush': 'Task Follow-up',
       'taskFollowUpQuestion': 'Did you smoke during this task?',
-      'taskFollowUpQuestionDriving': 'Answer after driving: Did you smoke during this task?',
+      'taskFollowUpQuestionDriving':
+          'Answer after driving: Did you smoke during this task?',
       'taskTimerStartedTitle': 'First Task',
-      'taskTimerStartedBody': 'Your 15-minute task has started:',
+      'taskTimerStartedBody': 'Task started:',
       'taskTimerDuration': 'Timer',
       'minutesShort': 'minutes',
     };
