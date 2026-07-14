@@ -782,7 +782,7 @@ mı    _loadHomeMetrics();
 
       debugPrint('[CompleteRegistration] Creating first task: $firstTask');
       final createdAt = DateTime.now();
-      const followUpDelay = Duration(minutes: 10);
+      const followUpDelay = Duration(minutes: 5);
 
       try {
         await _storageService.saveTaskResult(
@@ -804,7 +804,7 @@ mı    _loadHomeMetrics();
           delay: followUpDelay,
         );
         debugPrint(
-          '[CompleteRegistration] first task notification scheduled (10m)',
+          '[CompleteRegistration] first task notification scheduled (5m)',
         );
       } catch (error, stackTrace) {
         debugPrint(

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -28,9 +29,18 @@ class NotificationService {
 
   static const String _categoryTaskStart = 'task_start_category';
   static const String _categoryTaskFollowUp = 'task_followup_category';
-  static const String _taskStartChannelId = 'task_start_channel_v3';
-  static const String _taskFollowUpChannelId = 'task_followup_channel_v4';
+  static const String _taskStartChannelId = 'task_start_channel_v4';
+  static const String _taskFollowUpChannelId = 'task_followup_channel_v5';
   static const String _breathReminderChannelId = 'breath_reminder_channel_v3';
+  static const Int32List _insistentFlag = Int32List.fromList(<int>[4]);
+  static final Int64List _taskVibrationPattern = Int64List.fromList(<int>[
+    0,
+    1100,
+    700,
+    1100,
+    700,
+    1100,
+  ]);
 
   static Stream<Map<String, String>> get taskActionStream =>
       _taskActionController.stream;
@@ -194,6 +204,12 @@ class NotificationService {
           importance: Importance.max,
           priority: Priority.high,
           playSound: true,
+          enableVibration: true,
+          vibrationPattern: _taskVibrationPattern,
+          ongoing: true,
+          autoCancel: false,
+          onlyAlertOnce: false,
+          additionalFlags: _insistentFlag,
           audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
           category: AndroidNotificationCategory.reminder,
           actions: <AndroidNotificationAction>[
@@ -240,6 +256,12 @@ class NotificationService {
           importance: Importance.max,
           priority: Priority.high,
           playSound: true,
+          enableVibration: true,
+          vibrationPattern: _taskVibrationPattern,
+          ongoing: true,
+          autoCancel: false,
+          onlyAlertOnce: false,
+          additionalFlags: _insistentFlag,
           audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
           category: AndroidNotificationCategory.reminder,
           actions: <AndroidNotificationAction>[
@@ -356,6 +378,12 @@ class NotificationService {
           importance: Importance.max,
           priority: Priority.high,
           playSound: true,
+          enableVibration: true,
+          vibrationPattern: _taskVibrationPattern,
+          ongoing: true,
+          autoCancel: false,
+          onlyAlertOnce: false,
+          additionalFlags: _insistentFlag,
           audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
           category: AndroidNotificationCategory.call,
           fullScreenIntent: true,
