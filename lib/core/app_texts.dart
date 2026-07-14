@@ -157,6 +157,8 @@ class AppTexts {
     'taskFollowUpPendingCount': 'Bekleyen takip',
     'openTaskFollowUpScreen': 'Gorev Takip Ekranini Ac',
     'taskDeferredTenMinutes': 'Gorev 10 dakika ertelendi.',
+    'taskSuspiciousReset':
+        'Supheli davranis algilandi. Sayaç sifirlandi ve uyari yeniden baslatildi.',
     'taskDelayFirstSmoke10': 'Ilk sigarayi 10 dakika ertele',
     'taskDrinkWater': 'Bir bardak su ic',
     'taskBreathExercise2': '2 dakikalik nefes egzersizi yap',
@@ -483,6 +485,8 @@ class AppTexts {
     'taskFollowUpPendingCount': 'Pending follow-ups',
     'openTaskFollowUpScreen': 'Open Task Follow-up Screen',
     'taskDeferredTenMinutes': 'Task deferred by 10 minutes.',
+    'taskSuspiciousReset':
+        'Suspicious behavior detected. The timer was reset and alert restarted.',
     'taskDelayFirstSmoke10': 'Delay your first cigarette by 10 minutes',
     'taskDrinkWater': 'Drink one glass of water',
     'taskBreathExercise2': 'Do a 2-minute breathing exercise',

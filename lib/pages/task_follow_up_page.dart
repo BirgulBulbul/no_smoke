@@ -39,7 +39,7 @@ class _TaskFollowUpPageState extends State<TaskFollowUpPage> {
   }) async {
     await _storageService.saveTaskResult(
       taskTitle: taskTitle,
-      taskResult: success ? 'success' : 'failed',
+      taskResult: success ? 'willpower_success' : 'willpower_weakness',
       completedAt: DateTime.now(),
     );
     await _storageService.resolveTaskFollowUpByTitle(taskTitle);

@@ -394,8 +394,8 @@ class NotificationService {
     final reminderId = _deriveReminderId(id);
     await _plugin.show(
       id,
-      taskTitle,
-      taskDescription,
+      _text(code, 'disciplineCommand'),
+      '${_text(code, 'disciplineCommandBody')}\n$taskDescription',
       NotificationDetails(
         android: AndroidNotificationDetails(
           _taskStartChannelId,
@@ -406,7 +406,8 @@ class NotificationService {
           enableVibration: true,
           vibrationPattern: _taskVibrationPattern,
           additionalFlags: _insistentFlag,
-          autoCancel: true,
+          autoCancel: false,
+          ongoing: true,
           onlyAlertOnce: false,
           timeoutAfter: _notificationTimeoutMs,
           audioAttributesUsage: AudioAttributesUsage.alarm,
@@ -460,8 +461,8 @@ class NotificationService {
     final reminderId = _deriveReminderId(id);
     await _plugin.zonedSchedule(
       id,
-      _text(code, 'taskStartTitle'),
-      taskDescription,
+      _text(code, 'disciplineCommand'),
+      '${_text(code, 'disciplineCommandBody')}\n$taskDescription',
       fireAt,
       NotificationDetails(
         android: AndroidNotificationDetails(
@@ -473,7 +474,8 @@ class NotificationService {
           enableVibration: true,
           vibrationPattern: _taskVibrationPattern,
           additionalFlags: _insistentFlag,
-          autoCancel: true,
+          autoCancel: false,
+          ongoing: true,
           onlyAlertOnce: false,
           timeoutAfter: _notificationTimeoutMs,
           audioAttributesUsage: AudioAttributesUsage.alarm,
@@ -686,13 +688,16 @@ class NotificationService {
     const tr = <String, String>{
       'yes': 'Evet',
       'no': 'Hayır',
-      'taskActionDone': 'Tamam',
+      'taskActionDone': 'Gorevi Baslat',
       'taskActionNotNow': 'Şimdi Uygun Değil',
-      'taskActionDoneLabel': 'Tamam',
+      'taskActionDoneLabel': 'Gorevi Baslat',
       'taskActionNotNowLabel': 'Simdi uygun degil',
       'taskFollowUpActionYes': 'Evet',
       'taskFollowUpActionNo': 'Hayir',
       'taskStartTitle': 'Gorev Hatirlatmasi',
+      'disciplineCommand': 'Su andan itibaren sigara icme',
+      'disciplineCommandBody':
+          'Protokol aktif. Bildirim kapanmasi icin gorevi baslat.',
       'breathReminderTitle': 'Nefes Testi',
       'breathReminderBody': 'Günlük nefes testi zamanı geldi.',
       'breathReminderDriving':
@@ -713,13 +718,16 @@ class NotificationService {
     const en = <String, String>{
       'yes': 'Yes',
       'no': 'No',
-      'taskActionDone': 'Complete',
+      'taskActionDone': 'Start Task',
       'taskActionNotNow': 'Not now',
-      'taskActionDoneLabel': 'Complete',
+      'taskActionDoneLabel': 'Start Task',
       'taskActionNotNowLabel': 'Not now',
       'taskFollowUpActionYes': 'Yes',
       'taskFollowUpActionNo': 'No',
       'taskStartTitle': 'Task Reminder',
+      'disciplineCommand': 'Do not smoke from this moment',
+      'disciplineCommandBody':
+          'Protocol is active. Start the task to clear this alert.',
       'breathReminderTitle': 'Breath Test',
       'breathReminderBody': 'Time for your daily breath test.',
       'breathReminderDriving': 'Reminder delayed briefly for driving safety.',

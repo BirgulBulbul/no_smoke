@@ -6,6 +6,7 @@ import '../core/app_texts.dart';
 import '../models/survey_record.dart';
 import '../models/user_profile_snapshot.dart';
 import '../pages/task_follow_up_page.dart';
+import '../services/discipline_protocol_service.dart';
 import '../services/notification_service.dart';
 import '../services/permission_service.dart';
 import '../services/storage_service.dart';
@@ -31,8 +32,11 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final StorageService _storageService = StorageService();
+  final DisciplineProtocolService _disciplineProtocolService =
+      DisciplineProtocolService();
   final Map<String, String> _taskStates = {};
   final Map<String, Timer> _taskFollowUpTimers = {};
+  final Map<String, DateTime> _taskStartedAt = {};
   final Set<String> _notifiedTaskTitles = <String>{};
   StreamSubscription<Map<String, String>>? _taskActionSubscription;
   List<Map<String, dynamic>> _pendingFollowUps = const [];
@@ -222,6 +226,44 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _askTaskOutcome(String taskTitle) async {
+    final now = DateTime.now();
+    final startedAt = _taskStartedAt[taskTitle] ??
+        now.subtract(_resolveInitialTaskDelay(taskTitle));
+    final sensorEvents = await _storageService.loadSensorUsageBetween(
+      startAt: startedAt,
+      endAt: now,
+    );
+    final isSuspicious = _disciplineProtocolService.isSuspiciousDuringTask(
+      events: sensorEvents,
+      riskyHours: _riskyHours,
+      startAt: startedAt,
+      endAt: now,
+    );
+
+    if (isSuspicious) {
+      await _storageService.saveTaskResult(
+        taskTitle: taskTitle,
+        taskResult: 'suspicious_reset',
+        completedAt: now,
+      );
+      await NotificationService.showFirstTaskTriggerNotification(
+        taskTitle: context.t('taskStartTitle'),
+        taskDescription: taskTitle,
+      );
+      await NotificationService.scheduleTaskFollowUpReminder(
+        taskTitle: taskTitle,
+        delay: const Duration(minutes: 10),
+      );
+
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.t('taskSuspiciousReset'))),
+      );
+      return;
+    }
+
     final result = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -248,7 +290,7 @@ class _HomePageState extends State<HomePage> {
 
     await _storageService.saveTaskResult(
       taskTitle: taskTitle,
-      taskResult: result ? 'success' : 'failed',
+      taskResult: result ? 'willpower_success' : 'willpower_weakness',
       completedAt: DateTime.now(),
     );
     await _storageService.resolveTaskFollowUpByTitle(taskTitle);
@@ -276,13 +318,18 @@ class _HomePageState extends State<HomePage> {
 
     if (actionId == 'task_done') {
       final now = DateTime.now();
-      final delay = _resolveInitialTaskDelay(taskTitle);
+      final baseDelay = _resolveInitialTaskDelay(taskTitle);
+      final delay = _disciplineProtocolService.computeAdaptiveTaskDuration(
+        baseDuration: baseDelay,
+        successRate: _currentSuccessRate(),
+      );
       final followUpAt = now.add(delay);
       await _storageService.saveTaskResult(
         taskTitle: taskTitle,
         taskResult: 'started',
         completedAt: now,
       );
+      _taskStartedAt[taskTitle] = now;
       await _storageService.saveTaskFollowUp(
         taskTitle: taskTitle,
         scheduledAt: followUpAt,
@@ -324,7 +371,7 @@ class _HomePageState extends State<HomePage> {
       final success = true;
       await _storageService.saveTaskResult(
         taskTitle: taskTitle,
-        taskResult: success ? 'success' : 'failed',
+        taskResult: success ? 'willpower_success' : 'willpower_weakness',
         completedAt: DateTime.now(),
       );
       await _storageService.resolveTaskFollowUpByTitle(taskTitle);
@@ -513,12 +560,13 @@ class _HomePageState extends State<HomePage> {
         ? _todaysTasks.first
         : context.t('firstTaskNoSmoke15');
 
-    final schedule = <DateTime>[];
-    var cursor = now.add(const Duration(minutes: 10));
-    while (cursor.isBefore(sleepAt) && schedule.length < 5) {
-      schedule.add(cursor);
-      cursor = cursor.add(const Duration(minutes: 45));
-    }
+    final schedule = _disciplineProtocolService.generateUnpredictableMoments(
+      now: now,
+      sleepAt: sleepAt,
+      riskyHours: _riskyHours,
+      minCount: 5,
+      successRate: _currentSuccessRate(),
+    );
 
     if (schedule.isEmpty) {
       return;
@@ -693,7 +741,18 @@ class _HomePageState extends State<HomePage> {
       minutes += 10;
     }
 
-    return Duration(minutes: minutes < 3 ? 3 : minutes);
+    return _disciplineProtocolService.computeUnpredictableDelay(
+      baseDelay: Duration(minutes: minutes < 3 ? 3 : minutes),
+      successRate: _currentSuccessRate(),
+      minMinutes: 3,
+    );
+  }
+
+  double _currentSuccessRate() {
+    return _disciplineProtocolService.computeSuccessRate(
+      successCount: _recentSuccessCount,
+      failureCount: _recentFailureCount,
+    );
   }
 
   String _buildBreathDeltaText({

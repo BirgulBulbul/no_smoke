@@ -455,6 +455,34 @@ class StorageService {
     }).toList();
   }
 
+  Future<List<SensorUsageEvent>> loadSensorUsageBetween({
+    required DateTime startAt,
+    required DateTime endAt,
+  }) async {
+    final db = await database;
+    final rows = await db.query(
+      _sensorUsageTable,
+      where: 'createdAt >= ? AND createdAt <= ?',
+      whereArgs: [startAt.toIso8601String(), endAt.toIso8601String()],
+      orderBy: 'createdAt ASC',
+    );
+
+    return rows.map((row) {
+      return SensorUsageEvent(
+        id: row['id'] as String,
+        createdAt: DateTime.parse(row['createdAt'] as String),
+        activityState: row['activityState'] as String,
+        accelerometerMagnitude: (row['accelerometerMagnitude'] as num)
+            .toDouble(),
+        gyroscopeMagnitude: (row['gyroscopeMagnitude'] as num).toDouble(),
+        screenUnlockCount: (row['screenUnlockCount'] as num).toInt(),
+        appUsageMinutes: (row['appUsageMinutes'] as num).toInt(),
+        idleMinutes: (row['idleMinutes'] as num).toInt(),
+        charging: ((row['charging'] as num?)?.toInt() ?? 0) == 1,
+      );
+    }).toList();
+  }
+
   Future<List<TaskHistory>> loadTaskHistory() async {
     final records = await loadSurveyHistory();
     return records
