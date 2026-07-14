@@ -79,7 +79,7 @@ class _HomePageState extends State<HomePage> {
     _taskActionSubscription = NotificationService.taskActionStream.listen(
       _handleTaskNotificationAction,
     );
-    _loadHomeMetrics();
+mı    _loadHomeMetrics();
   }
 
   @override
@@ -142,6 +142,75 @@ class _HomePageState extends State<HomePage> {
       return context.t('trendStable');
     }
     return trendKey;
+  }
+
+  String _localizeCanonicalToken(String value) {
+    switch (value.trim()) {
+      case 'Evet':
+        return context.t('yes');
+      case 'Hayır':
+      case 'Hayir':
+        return context.t('no');
+      case '2 adet':
+        return context.t('twoCig');
+      case '3 adet':
+        return context.t('threeCig');
+      case '4 adet':
+        return context.t('fourCig');
+      case '5+ adet':
+        return context.t('fivePlusCig');
+      case 'Kahve':
+        return context.t('triggerCoffee');
+      case 'Yemek Sonrasi':
+        return context.t('triggerMeal');
+      case 'Arac':
+        return context.t('triggerDriving');
+      case 'Stres':
+        return context.t('triggerStress');
+      case 'Telefon':
+        return context.t('triggerPhone');
+      case 'Sosyal Ortam':
+        return context.t('triggerSocial');
+      case 'Alkol':
+        return context.t('triggerAlcohol');
+      default:
+        return value;
+    }
+  }
+
+  String _localizeConsecutiveLabel(String value) {
+    final parts = value.split(' - ');
+    if (parts.length == 2) {
+      return '${_localizeCanonicalToken(parts[0])} - ${_localizeCanonicalToken(parts[1])}';
+    }
+    return _localizeCanonicalToken(value);
+  }
+
+  String _localizeTaskText(String task) {
+    final taskMap = <String, String>{
+      'Ilk sigarayi 10 dakika ertele': context.t('taskDelayFirstSmoke10'),
+      'Bir bardak su ic': context.t('taskDrinkWater'),
+      '2 dakikalik nefes egzersizi yap': context.t('taskBreathExercise2'),
+      '10 dakika sigarasiz kal': context.t('taskNoSmoke10'),
+      'Kriz anini not et': context.t('taskNoteCraving'),
+      'Ilk sigarayi 25 dakika ertele': context.t('taskDelayFirstSmoke25'),
+      'Bugun bir sigarayi atla': context.t('taskSkipOneCig'),
+      '30 dakika sigarasiz kal': context.t('taskNoSmoke30'),
+      'Riskli saatte seker sakiz kullan': context.t('taskUseGumAtRiskHour'),
+      '45 dakika sigarasiz kal': context.t('taskNoSmoke45'),
+      '60 dakika sigarasiz kal': context.t('taskNoSmoke60'),
+      'Bugun 2 sigara eksik ic': context.t('taskSmokeTwoLess'),
+      '90 dakika sigarasiz kal': context.t('taskNoSmoke90'),
+      '120 dakika sigarasiz kal': context.t('taskNoSmoke120'),
+      'Aksam saatinde destek kisisiyle iletisim kur': context.t('taskContactSupportEvening'),
+      '1 gun sigarasiz kalma gorevi: bugun tum kriz anlarinda sigarayi erteleyin.': context.t('taskPlanOneDayDelayAllCravings'),
+      '1 gun sigarasiz kalma gorevi: ilk sigarayi en az 90 dakika erteleyin.': context.t('taskPlanOneDayDelayFirst90'),
+      '2 gun sigarasiz kalma gorevi: 48 saat boyunca tetikleyicilerde sigarayi erteleyin.': context.t('taskPlanTwoDaysDelayTriggers'),
+      '2 gun sigarasiz kalma plani: kriz aninda 10 derin nefes + su uygulayin.': context.t('taskPlanTwoDaysBreathAndWater'),
+      '1 hafta sigarasiz kalma hedefi: 7 gun boyunca tum gorevleri tamamlayin.': context.t('taskPlanOneWeekCompleteAll'),
+    };
+
+    return taskMap[task] ?? task;
   }
 
   Future<void> _askTaskOutcome(String taskTitle) async {
@@ -891,7 +960,7 @@ class _HomePageState extends State<HomePage> {
   Widget _buildAdaptiveInsightsCard() {
     final triggers = _riskyTriggers.isEmpty
         ? context.t('noRecordYet')
-        : _riskyTriggers.join(', ');
+      : _riskyTriggers.map(_localizeCanonicalToken).join(', ');
     final hours = _riskyHours.isEmpty
         ? context.t('noRecordYet')
         : _riskyHours.join(', ');
@@ -1018,7 +1087,7 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('- $task'),
+                    Text('- ${_localizeTaskText(task)}'),
                     const SizedBox(height: 6),
                     Text(translatedState, style: const TextStyle(fontSize: 12)),
                   ],
@@ -1145,7 +1214,7 @@ class _HomePageState extends State<HomePage> {
       fragments.add(
         MapEntry(
           Icons.local_fire_department_rounded,
-          '${context.t('taskReasonCauseTopTrigger')} ${_riskyTriggers.first}',
+          '${context.t('taskReasonCauseTopTrigger')} ${_localizeCanonicalToken(_riskyTriggers.first)}',
         ),
       );
     }
@@ -1292,10 +1361,10 @@ class _HomePageState extends State<HomePage> {
   Widget _buildConsecutiveSmokingCard() {
     final latest = _consecutiveSmokingLatestText == 'noRecordYet'
         ? context.t('noRecordYet')
-        : _consecutiveSmokingLatestText;
+      : _localizeConsecutiveLabel(_consecutiveSmokingLatestText);
     final status = _consecutiveSmokingStatusText == 'noRecordYet'
         ? context.t('noRecordYet')
-        : _consecutiveSmokingStatusText;
+      : _localizeConsecutiveLabel(_consecutiveSmokingStatusText);
     final trend = _consecutiveSmokingTrendText == 'noRecordYet'
         ? context.t('noRecordYet')
         : _consecutiveSmokingTrendText == 'trendStable'
@@ -1309,7 +1378,7 @@ class _HomePageState extends State<HomePage> {
         ? context.t('noRecordYet')
         : _consecutiveSmokingPreviousText == 'firstEvaluation'
         ? context.t('firstEvaluation')
-        : _consecutiveSmokingPreviousText;
+        : _localizeConsecutiveLabel(_consecutiveSmokingPreviousText);
 
     return Card(
       child: Padding(

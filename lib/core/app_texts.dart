@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+şimport 'package:flutter/material.dart';
 
 class AppTexts {
   static const Map<String, String> _tr = {
@@ -157,6 +157,31 @@ class AppTexts {
     'taskFollowUpPendingCount': 'Bekleyen takip',
     'openTaskFollowUpScreen': 'Gorev Takip Ekranini Ac',
     'taskDeferredTenMinutes': 'Gorev 10 dakika ertelendi.',
+    'taskDelayFirstSmoke10': 'Ilk sigarayi 10 dakika ertele',
+    'taskDrinkWater': 'Bir bardak su ic',
+    'taskBreathExercise2': '2 dakikalik nefes egzersizi yap',
+    'taskNoSmoke10': '10 dakika sigarasiz kal',
+    'taskNoteCraving': 'Kriz anini not et',
+    'taskDelayFirstSmoke25': 'Ilk sigarayi 25 dakika ertele',
+    'taskSkipOneCig': 'Bugun bir sigarayi atla',
+    'taskNoSmoke30': '30 dakika sigarasiz kal',
+    'taskUseGumAtRiskHour': 'Riskli saatte seker sakiz kullan',
+    'taskNoSmoke45': '45 dakika sigarasiz kal',
+    'taskNoSmoke60': '60 dakika sigarasiz kal',
+    'taskSmokeTwoLess': 'Bugun 2 sigara eksik ic',
+    'taskNoSmoke90': '90 dakika sigarasiz kal',
+    'taskNoSmoke120': '120 dakika sigarasiz kal',
+    'taskContactSupportEvening': 'Aksam saatinde destek kisisiyle iletisim kur',
+    'taskPlanOneDayDelayAllCravings':
+        '1 gun sigarasiz kalma gorevi: bugun tum kriz anlarinda sigarayi erteleyin.',
+    'taskPlanOneDayDelayFirst90':
+        '1 gun sigarasiz kalma gorevi: ilk sigarayi en az 90 dakika erteleyin.',
+    'taskPlanTwoDaysDelayTriggers':
+        '2 gun sigarasiz kalma gorevi: 48 saat boyunca tetikleyicilerde sigarayi erteleyin.',
+    'taskPlanTwoDaysBreathAndWater':
+        '2 gun sigarasiz kalma plani: kriz aninda 10 derin nefes + su uygulayin.',
+    'taskPlanOneWeekCompleteAll':
+        '1 hafta sigarasiz kalma hedefi: 7 gun boyunca tum gorevleri tamamlayin.',
     'taskReasonCardTitle': 'Gorev Nedenleri',
     'taskReasonRiskLine': 'Anlik risk puani',
     'taskReasonRecentRatio': 'Son 10 gorev basari orani',
@@ -454,6 +479,31 @@ class AppTexts {
     'taskFollowUpPendingCount': 'Pending follow-ups',
     'openTaskFollowUpScreen': 'Open Task Follow-up Screen',
     'taskDeferredTenMinutes': 'Task deferred by 10 minutes.',
+    'taskDelayFirstSmoke10': 'Delay your first cigarette by 10 minutes',
+    'taskDrinkWater': 'Drink one glass of water',
+    'taskBreathExercise2': 'Do a 2-minute breathing exercise',
+    'taskNoSmoke10': 'Stay smoke-free for 10 minutes',
+    'taskNoteCraving': 'Write down your craving moment',
+    'taskDelayFirstSmoke25': 'Delay your first cigarette by 25 minutes',
+    'taskSkipOneCig': 'Skip one cigarette today',
+    'taskNoSmoke30': 'Stay smoke-free for 30 minutes',
+    'taskUseGumAtRiskHour': 'Use sugar-free gum during risky hours',
+    'taskNoSmoke45': 'Stay smoke-free for 45 minutes',
+    'taskNoSmoke60': 'Stay smoke-free for 60 minutes',
+    'taskSmokeTwoLess': 'Smoke 2 fewer cigarettes today',
+    'taskNoSmoke90': 'Stay smoke-free for 90 minutes',
+    'taskNoSmoke120': 'Stay smoke-free for 120 minutes',
+    'taskContactSupportEvening': 'Contact your support person in the evening',
+    'taskPlanOneDayDelayAllCravings':
+        '1-day smoke-free mission: delay cigarettes during all craving moments today.',
+    'taskPlanOneDayDelayFirst90':
+        '1-day smoke-free mission: delay your first cigarette by at least 90 minutes.',
+    'taskPlanTwoDaysDelayTriggers':
+        '2-day smoke-free mission: delay cigarettes during triggers for 48 hours.',
+    'taskPlanTwoDaysBreathAndWater':
+        '2-day smoke-free plan: use 10 deep breaths + water during cravings.',
+    'taskPlanOneWeekCompleteAll':
+        '1-week smoke-free target: complete all tasks for 7 days.',
     'taskReasonCardTitle': 'Task Decision Details',
     'taskReasonRiskLine': 'Current risk score',
     'taskReasonRecentRatio': 'Recent 10-task success ratio',
