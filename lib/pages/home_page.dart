@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/app_texts.dart';
+import '../models/user_profile_snapshot.dart';
 import '../pages/task_follow_up_page.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
@@ -232,6 +233,60 @@ class _HomePageState extends State<HomePage> {
     return const Duration(minutes: 30);
   }
 
+  void _showRegistrationError(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<bool> _validateRegistrationInputs() async {
+    final records = await _storageService.loadSurveyHistory();
+    final hasInitialSurvey = records.any((record) => record.type == 'initial');
+    final hasBreathTest = records.any((record) => record.type == 'breath_test');
+    return hasInitialSurvey && hasBreathTest;
+  }
+
+  Future<void> _createInitialProfileSnapshot() async {
+    final records = await _storageService.loadSurveyHistory();
+    final triggerMap = await _storageService.loadTriggerMapByRecordId();
+    final contextMap = await _storageService.loadSurveyContextByRecordId();
+
+    final latestSurvey = records.reversed.firstWhere(
+      (record) => record.type == 'initial' || record.type == 'weekly',
+    );
+    final latestBreath = records.reversed.firstWhere(
+      (record) => record.type == 'breath_test',
+    );
+
+    final latestContext = contextMap[latestSurvey.id];
+    final healthConditions =
+        (latestContext?['healthConditions'] as List<String>?) ?? const <String>[];
+    final triggers = triggerMap[latestSurvey.id] ?? const <String>[];
+
+    await _storageService.saveUserProfileSnapshot(
+      UserProfileSnapshot(
+        id: 'profile_init_${DateTime.now().millisecondsSinceEpoch}',
+        createdAt: DateTime.now(),
+        riskScore: latestSurvey.riskScore,
+        packsPerDay: latestSurvey.packsPerDay,
+        firstCigaretteRange: 'unknown',
+        smokeFreeRange: 'unknown',
+        consecutiveSmokingHabit: latestSurvey.consecutiveSmokingHabit ?? 'Hayır',
+        consecutiveSmokingCount: latestSurvey.consecutiveSmokingCount,
+        triggers: triggers,
+        healthConditions: healthConditions,
+        profession: (latestContext?['profession'] as String?) ?? 'Belirtilmedi',
+        sleepTime: (latestContext?['sleepTime'] as String?) ?? '21:00',
+        wakeTime: (latestContext?['wakeTime'] as String?) ?? '07:00',
+        latestExhaleSeconds: latestBreath.exhaleTestSeconds,
+        latestInhaleSeconds: latestBreath.inhaleTestSeconds,
+      ),
+    );
+  }
+
   Future<void> _completeRegistration() async {
     if (_isCompletingRegistration || _registrationCompleted) {
       return;
@@ -242,10 +297,30 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
+      debugPrint('[CompleteRegistration] Started');
+      final isValid = await _validateRegistrationInputs();
+      if (!isValid) {
+        debugPrint('[CompleteRegistration] Validation failed');
+        _showRegistrationError('Lütfen eksik alanları doldurun.');
+        return;
+      }
+
+      try {
+        debugPrint('[CompleteRegistration] Running _createInitialProfileSnapshot');
+        await _createInitialProfileSnapshot();
+      } catch (error, stackTrace) {
+        debugPrint('[CompleteRegistration] Profile creation failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        _showRegistrationError('Profil oluşturulamadı. Lütfen tekrar deneyin.');
+        return;
+      }
+
+      debugPrint('[CompleteRegistration] Running loadBehaviorDashboard');
       final behavior = await _storageService.loadBehaviorDashboard();
       final firstTask = behavior.todaysTasks.isEmpty ? null : behavior.todaysTasks.first;
 
       if (firstTask != null) {
+        debugPrint('[CompleteRegistration] Creating first task: $firstTask');
         final createdAt = DateTime.now();
         final followUpDelay = _resolveInitialTaskDelay(firstTask);
         final followUpAt = createdAt.add(followUpDelay);
@@ -266,7 +341,9 @@ class _HomePageState extends State<HomePage> {
         _scheduleLocalFollowUp(firstTask, followUpAt);
       }
 
+      debugPrint('[CompleteRegistration] Saving completion flag');
       await _storageService.saveInitialRegistrationCompleted(true);
+      debugPrint('[CompleteRegistration] Refreshing Home metrics');
       await _loadHomeMetrics();
 
       if (!mounted) {
@@ -276,6 +353,11 @@ class _HomePageState extends State<HomePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.t('registrationCompleted'))),
       );
+      debugPrint('[CompleteRegistration] Completed successfully');
+    } catch (error, stackTrace) {
+      debugPrint('[CompleteRegistration] Failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showRegistrationError('Kaydı tamamlanırken bir hata oluştu. Lütfen tekrar deneyin.');
     } finally {
       if (mounted) {
         setState(() {
