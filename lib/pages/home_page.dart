@@ -320,8 +320,8 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    if (actionId == 'smoked_yes' || actionId == 'smoked_no') {
-      final success = actionId == 'smoked_yes';
+    if (actionId == 'followup_done' || actionId == 'smoked_yes') {
+      final success = true;
       await _storageService.saveTaskResult(
         taskTitle: taskTitle,
         taskResult: success ? 'success' : 'failed',
@@ -338,6 +338,21 @@ class _HomePageState extends State<HomePage> {
       });
       await _loadHomeMetrics();
       await _restorePendingFollowUps();
+      return;
+    }
+
+    if (actionId == 'followup_later' || actionId == 'smoked_no') {
+      final delay = const Duration(minutes: 10);
+      final followUpAt = DateTime.now().add(delay);
+      await _storageService.saveTaskFollowUp(
+        taskTitle: taskTitle,
+        scheduledAt: followUpAt,
+      );
+      await NotificationService.scheduleTaskFollowUpReminder(
+        taskTitle: taskTitle,
+        delay: delay,
+      );
+      _scheduleLocalFollowUp(taskTitle, followUpAt);
     }
   }
 

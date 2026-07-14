@@ -29,6 +29,8 @@ class NotificationService {
 
   static const String _actionTaskDone = 'task_done';
   static const String _actionTaskNotNow = 'task_not_now';
+  static const String _actionFollowUpDone = 'followup_done';
+  static const String _actionFollowUpLater = 'followup_later';
   static const String _actionSmokedYes = 'smoked_yes';
   static const String _actionSmokedNo = 'smoked_no';
 
@@ -37,13 +39,13 @@ class NotificationService {
   static const String _taskStartChannelId = 'task_start_channel_v4';
   static const String _taskFollowUpChannelId = 'task_followup_channel_v5';
   static const String _taskEscalationChannelId = 'task_escalation_channel_v1';
-  static const String _taskBeepChannelId = 'task_beep_channel_v1';
   static const String _breathReminderChannelId = 'breath_reminder_channel_v3';
-  static const int _notificationTimeoutMs = 5000;
+  static const int _notificationTimeoutMs = 15000;
   static const Duration _unansweredReminderDelay = Duration(minutes: 10);
+  static final Int32List _insistentFlag = Int32List.fromList(<int>[4]);
   static final Int64List _taskVibrationPattern = Int64List.fromList(<int>[
     0,
-    5000,
+    15000,
   ]);
 
   static Stream<Map<String, String>> get taskActionStream =>
@@ -82,15 +84,15 @@ class NotificationService {
             _categoryTaskFollowUp,
             actions: <DarwinNotificationAction>[
               DarwinNotificationAction.plain(
-                _actionSmokedYes,
-                _text(code, 'yes'),
+                _actionFollowUpDone,
+                _text(code, 'taskActionDone'),
                 options: <DarwinNotificationActionOption>{
                   DarwinNotificationActionOption.foreground,
                 },
               ),
               DarwinNotificationAction.plain(
-                _actionSmokedNo,
-                _text(code, 'no'),
+                _actionFollowUpLater,
+                _text(code, 'taskActionNotNow'),
                 options: <DarwinNotificationActionOption>{
                   DarwinNotificationActionOption.foreground,
                 },
@@ -263,6 +265,14 @@ class NotificationService {
         taskDescription: taskTitle,
         delay: const Duration(minutes: 10),
       );
+      return;
+    }
+
+    if (actionId == _actionFollowUpLater || actionId == _actionSmokedNo) {
+      await scheduleTaskFollowUpReminder(
+        taskTitle: taskTitle,
+        delay: const Duration(minutes: 10),
+      );
     }
   }
 
@@ -318,10 +328,22 @@ class NotificationService {
   }) async {
     final code = await LanguageService.loadSelectedLanguageCode();
     final scheduleMode = await _resolveAndroidScheduleMode();
+    final isFollowUp = type == _typeTaskFollowUp;
+    final title = isFollowUp
+        ? _text(code, 'taskFollowUpTitlePush')
+        : _text(code, 'taskEscalationTitle');
+    final body = isFollowUp
+        ? '${_text(code, 'taskFollowUpQuestion')}\n$taskTitle'
+        : '${_text(code, 'taskEscalationBodyPrefix')}\n$taskTitle';
+    final androidCategory = isFollowUp
+        ? AndroidNotificationCategory.call
+        : AndroidNotificationCategory.reminder;
+    final iosCategory = isFollowUp ? _categoryTaskFollowUp : _categoryTaskStart;
+
     await _plugin.zonedSchedule(
       reminderId,
-      _text(code, 'taskEscalationTitle'),
-      '${_text(code, 'taskEscalationBodyPrefix')}\n$taskTitle',
+      title,
+      body,
       triggerAt,
       NotificationDetails(
         android: AndroidNotificationDetails(
@@ -332,26 +354,28 @@ class NotificationService {
           playSound: true,
           enableVibration: true,
           vibrationPattern: _taskVibrationPattern,
+          additionalFlags: _insistentFlag,
           audioAttributesUsage: AudioAttributesUsage.alarm,
           timeoutAfter: _notificationTimeoutMs,
-          category: AndroidNotificationCategory.reminder,
+          category: androidCategory,
           actions: <AndroidNotificationAction>[
             AndroidNotificationAction(
-              _actionTaskDone,
+              isFollowUp ? _actionFollowUpDone : _actionTaskDone,
               _text(code, 'taskActionDoneLabel'),
               showsUserInterface: true,
               cancelNotification: true,
             ),
             AndroidNotificationAction(
-              _actionTaskNotNow,
+              isFollowUp ? _actionFollowUpLater : _actionTaskNotNow,
               _text(code, 'taskActionNotNowLabel'),
               showsUserInterface: true,
               cancelNotification: true,
             ),
           ],
         ),
-        iOS: const DarwinNotificationDetails(
-          categoryIdentifier: _categoryTaskStart,
+        iOS: DarwinNotificationDetails(
+          categoryIdentifier: iosCategory,
+          presentSound: true,
         ),
       ),
       androidScheduleMode: scheduleMode,
@@ -359,43 +383,6 @@ class NotificationService {
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: jsonEncode({'type': type, 'taskTitle': taskTitle}),
     );
-  }
-
-  static Future<void> _scheduleCompanionBeeps({
-    required tz.TZDateTime baseAt,
-    required String taskTitle,
-    required String type,
-  }) async {
-    final scheduleMode = await _resolveAndroidScheduleMode();
-    for (var i = 1; i <= 2; i++) {
-      final id =
-          DateTime.now().millisecondsSinceEpoch.remainder(2147483647) + i;
-      final fireAt = baseAt.add(Duration(seconds: i * 2));
-      await _plugin.zonedSchedule(
-        id,
-        '',
-        taskTitle,
-        fireAt,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            _taskBeepChannelId,
-            'Gorev bip sesi',
-            importance: Importance.high,
-            priority: Priority.high,
-            playSound: true,
-            enableVibration: false,
-            timeoutAfter: 2500,
-            audioAttributesUsage: AudioAttributesUsage.alarm,
-            category: AndroidNotificationCategory.reminder,
-          ),
-          iOS: const DarwinNotificationDetails(presentSound: true),
-        ),
-        androidScheduleMode: scheduleMode,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        payload: jsonEncode({'type': type, 'taskTitle': taskTitle}),
-      );
-    }
   }
 
   static Future<void> showFirstTaskTriggerNotification({
@@ -418,6 +405,7 @@ class NotificationService {
           playSound: true,
           enableVibration: true,
           vibrationPattern: _taskVibrationPattern,
+          additionalFlags: _insistentFlag,
           autoCancel: true,
           onlyAlertOnce: false,
           timeoutAfter: _notificationTimeoutMs,
@@ -452,12 +440,6 @@ class NotificationService {
     final reminderAt = tz.TZDateTime.now(
       tz.local,
     ).add(_unansweredReminderDelay);
-    final now = tz.TZDateTime.now(tz.local);
-    await _scheduleCompanionBeeps(
-      baseAt: now,
-      taskTitle: taskDescription,
-      type: _typeTaskStart,
-    );
     await _scheduleUnansweredTaskUpdateReminder(
       taskTitle: taskTitle,
       type: _typeTaskStart,
@@ -490,6 +472,7 @@ class NotificationService {
           playSound: true,
           enableVibration: true,
           vibrationPattern: _taskVibrationPattern,
+          additionalFlags: _insistentFlag,
           autoCancel: true,
           onlyAlertOnce: false,
           timeoutAfter: _notificationTimeoutMs,
@@ -529,11 +512,6 @@ class NotificationService {
       type: _typeTaskStart,
       reminderId: reminderId,
       triggerAt: fireAt.add(_unansweredReminderDelay),
-    );
-    await _scheduleCompanionBeeps(
-      baseAt: fireAt,
-      taskTitle: taskDescription,
-      type: _typeTaskStart,
     );
   }
 
@@ -625,6 +603,7 @@ class NotificationService {
           playSound: true,
           enableVibration: true,
           vibrationPattern: _taskVibrationPattern,
+          additionalFlags: _insistentFlag,
           autoCancel: true,
           onlyAlertOnce: false,
           timeoutAfter: _notificationTimeoutMs,
@@ -633,14 +612,14 @@ class NotificationService {
           fullScreenIntent: true,
           actions: <AndroidNotificationAction>[
             AndroidNotificationAction(
-              _actionSmokedYes,
-              _text(code, 'taskFollowUpActionYes'),
+              _actionFollowUpDone,
+              _text(code, 'taskActionDoneLabel'),
               showsUserInterface: true,
               cancelNotification: true,
             ),
             AndroidNotificationAction(
-              _actionSmokedNo,
-              _text(code, 'taskFollowUpActionNo'),
+              _actionFollowUpLater,
+              _text(code, 'taskActionNotNowLabel'),
               showsUserInterface: true,
               cancelNotification: true,
             ),
@@ -666,11 +645,6 @@ class NotificationService {
       type: _typeTaskFollowUp,
       reminderId: reminderId,
       triggerAt: fireAt.add(_unansweredReminderDelay),
-    );
-    await _scheduleCompanionBeeps(
-      baseAt: fireAt,
-      taskTitle: taskTitle,
-      type: _typeTaskFollowUp,
     );
   }
 
@@ -731,7 +705,7 @@ class NotificationService {
       'taskTimerStartedBody': 'Görev başladı:',
       'taskEscalationTitle': 'Gorev guncellendi',
       'taskEscalationBodyPrefix':
-          '10 saniye icinde yanit alinmadi. 10 dakika sonra guncel gorev hatirlatmasi:',
+          '15 saniye icinde yanit alinmadi. 10 dakika sonra gorev tekrarlanacak:',
       'taskTimerDuration': 'Sayaç',
       'minutesShort': 'dakika',
     };
@@ -757,7 +731,7 @@ class NotificationService {
       'taskTimerStartedBody': 'Task started:',
       'taskEscalationTitle': 'Task updated',
       'taskEscalationBodyPrefix':
-          'No response in 10 seconds. Updated task reminder after 10 minutes:',
+          'No response in 15 seconds. Task will repeat after 10 minutes:',
       'taskTimerDuration': 'Timer',
       'minutesShort': 'minutes',
     };
