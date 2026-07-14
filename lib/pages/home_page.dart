@@ -66,6 +66,9 @@ class _HomePageState extends State<HomePage> {
   String _consecutiveSmokingStatusText = '...';
   int _successfulTaskCount = 0;
   int _failedTaskCount = 0;
+  int _recentSuccessCount = 0;
+  int _recentFailureCount = 0;
+  String _nextTaskNotificationText = '...';
   double _weeklyAverage = 0;
   double _monthlyAverage = 0;
   double _dailyAverage = 0;
@@ -342,11 +345,15 @@ class _HomePageState extends State<HomePage> {
           consecutiveSmokingSummary['status'] ?? context.t('noRecordYet');
       _successfulTaskCount = taskOutcomeSummary['successCount'] ?? 0;
       _failedTaskCount = taskOutcomeSummary['failureCount'] ?? 0;
+      _recentSuccessCount = taskOutcomeSummary['recentSuccessCount'] ?? 0;
+      _recentFailureCount = taskOutcomeSummary['recentFailureCount'] ?? 0;
       for (final task in _todaysTasks) {
         _taskStates.putIfAbsent(task, () => 'new');
       }
       _pendingFollowUps = pendingFollowUps;
     });
+
+    await _refreshNextTaskNotificationInsight(pendingFollowUps);
 
     if (widget.autoCompleteRegistrationOnLoad &&
         !_registrationCompleted &&
@@ -385,6 +392,55 @@ class _HomePageState extends State<HomePage> {
       _notifiedTaskTitles.add(task);
       index += 1;
     }
+  }
+
+  Future<void> _refreshNextTaskNotificationInsight(
+    List<Map<String, dynamic>> pendingFollowUps,
+  ) async {
+    String label = context.t('taskReasonNoPlanned');
+
+    if (pendingFollowUps.isNotEmpty) {
+      final sorted = [...pendingFollowUps]
+        ..sort(
+          (a, b) => (a['scheduledAt'] as DateTime).compareTo(
+            b['scheduledAt'] as DateTime,
+          ),
+        );
+      final nextAt = sorted.first['scheduledAt'] as DateTime;
+      label = _formatDateTime(nextAt);
+    } else {
+      final nextNewTaskIndex = _todaysTasks.indexWhere(
+        (task) =>
+            (_taskStates[task] ?? 'new') == 'new' &&
+            !_notifiedTaskTitles.contains(task),
+      );
+
+      if (nextNewTaskIndex >= 0) {
+        final timingContext = await _storageService
+            .loadLatestTaskTimingContext();
+        final delay = _resolveTaskNotificationDelay(
+          taskTitle: _todaysTasks[nextNewTaskIndex],
+          index: nextNewTaskIndex,
+          timingContext: timingContext,
+        );
+        label = _formatDateTime(DateTime.now().add(delay));
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _nextTaskNotificationText = label;
+    });
+  }
+
+  String _formatDateTime(DateTime dt) {
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final day = dt.day.toString().padLeft(2, '0');
+    final month = dt.month.toString().padLeft(2, '0');
+    return '$day/$month $hour:$minute';
   }
 
   Duration _resolveInitialTaskDelay(String taskTitle) {
@@ -772,6 +828,8 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 16),
               _buildAdaptiveInsightsCard(),
               const SizedBox(height: 16),
+              _buildTaskReasonCard(),
+              const SizedBox(height: 16),
               _buildTodayTaskCard(),
               const SizedBox(height: 12),
               if (_pendingFollowUps.isNotEmpty)
@@ -955,6 +1013,167 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+  }
+
+  Widget _buildTaskReasonCard() {
+    final cadenceLabel = _planCadenceLevel == 'week'
+        ? context.t('goal180CadenceWeek')
+        : _planCadenceLevel == 'two_days'
+        ? context.t('goal180CadenceTwoDays')
+        : context.t('goal180CadenceOneDay');
+    final recentTotal = _recentSuccessCount + _recentFailureCount;
+    final successRatioText = recentTotal == 0
+        ? context.t('taskReasonNoRecentData')
+        : '%${((_recentSuccessCount * 100) / recentTotal).round()} ($_recentSuccessCount/$recentTotal)';
+    final decisionReasons = _buildTaskDecisionReasons();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              context.t('taskReasonCardTitle'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '${context.t('taskReasonRiskLine')}: ${_adaptiveRiskScore == 0 ? widget.riskScore : _adaptiveRiskScore}/100',
+            ),
+            const SizedBox(height: 6),
+            Text('${context.t('taskReasonRecentRatio')}: $successRatioText'),
+            const SizedBox(height: 6),
+            Text('${context.t('taskReasonCadence')}: $cadenceLabel'),
+            const SizedBox(height: 6),
+            Text(
+              '${context.t('taskReasonNextNotification')}: $_nextTaskNotificationText',
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${context.t('taskReasonCause')}:',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            ...decisionReasons.map(
+              (reason) => Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Icon(
+                        reason.key,
+                        size: 14,
+                        color: _reasonIconColor(reason.key),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(reason.value)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<MapEntry<IconData, String>> _buildTaskDecisionReasons() {
+    final effectiveRisk = _adaptiveRiskScore == 0
+        ? widget.riskScore
+        : _adaptiveRiskScore;
+    final recentTotal = _recentSuccessCount + _recentFailureCount;
+
+    final fragments = <MapEntry<IconData, String>>[];
+
+    if (recentTotal == 0) {
+      fragments.add(
+        MapEntry(Icons.tune_rounded, context.t('taskReasonCauseBootstrap')),
+      );
+    } else if (_recentFailureCount > _recentSuccessCount) {
+      fragments.add(
+        MapEntry(
+          Icons.trending_up_rounded,
+          context.t('taskReasonCauseFailurePressure'),
+        ),
+      );
+    } else if (_recentSuccessCount >= _recentFailureCount + 3) {
+      fragments.add(
+        MapEntry(
+          Icons.verified_rounded,
+          context.t('taskReasonCauseSuccessStability'),
+        ),
+      );
+    }
+
+    if (effectiveRisk >= 70) {
+      fragments.add(
+        MapEntry(
+          Icons.warning_amber_rounded,
+          context.t('taskReasonCauseHighRisk'),
+        ),
+      );
+    } else if (effectiveRisk <= 35) {
+      fragments.add(
+        MapEntry(
+          Icons.shield_moon_rounded,
+          context.t('taskReasonCauseLowRisk'),
+        ),
+      );
+    }
+
+    if (_riskyTriggers.isNotEmpty) {
+      fragments.add(
+        MapEntry(
+          Icons.local_fire_department_rounded,
+          '${context.t('taskReasonCauseTopTrigger')} ${_riskyTriggers.first}',
+        ),
+      );
+    }
+
+    if (_riskyHours.isNotEmpty) {
+      fragments.add(
+        MapEntry(
+          Icons.schedule_rounded,
+          '${context.t('taskReasonCauseTopHour')} ${_riskyHours.first}',
+        ),
+      );
+    }
+
+    if (fragments.isEmpty) {
+      return [
+        MapEntry(Icons.balance_rounded, context.t('taskReasonCauseBalanced')),
+      ];
+    }
+    return fragments;
+  }
+
+  Color _reasonIconColor(IconData icon) {
+    if (icon == Icons.warning_amber_rounded) {
+      return Colors.redAccent;
+    }
+    if (icon == Icons.trending_up_rounded) {
+      return Colors.orangeAccent;
+    }
+    if (icon == Icons.local_fire_department_rounded) {
+      return Colors.deepOrangeAccent;
+    }
+    if (icon == Icons.schedule_rounded) {
+      return Colors.lightBlueAccent;
+    }
+    if (icon == Icons.verified_rounded) {
+      return Colors.lightGreenAccent;
+    }
+    if (icon == Icons.shield_moon_rounded || icon == Icons.balance_rounded) {
+      return Colors.tealAccent;
+    }
+    if (icon == Icons.tune_rounded) {
+      return Colors.purpleAccent;
+    }
+    return Colors.white70;
   }
 
   Widget _buildBreathTrendCard() {

@@ -157,6 +157,28 @@ class AppTexts {
     'taskFollowUpPendingCount': 'Bekleyen takip',
     'openTaskFollowUpScreen': 'Gorev Takip Ekranini Ac',
     'taskDeferredTenMinutes': 'Gorev 10 dakika ertelendi.',
+    'taskReasonCardTitle': 'Gorev Nedenleri',
+    'taskReasonRiskLine': 'Anlik risk puani',
+    'taskReasonRecentRatio': 'Son 10 gorev basari orani',
+    'taskReasonCadence': 'Aktif sikilik seviyesi',
+    'taskReasonNextNotification': 'Bir sonraki planli bildirim',
+    'taskReasonCause': 'Gorev secim sebebi',
+    'taskReasonNoRecentData': 'Henuz yeterli gorev verisi yok',
+    'taskReasonNoPlanned': 'Planli gorev bildirimi yok',
+    'taskReasonCauseBootstrap':
+        'Ilk gorev verileri olusuyor, sistem baslangic kalibrasyonu yapiyor',
+    'taskReasonCauseFailurePressure':
+        'Son gorevlerde zorlanma oldugu icin sistem sikiligi artiriyor',
+    'taskReasonCauseSuccessStability':
+        'Son gorev performansi iyi oldugu icin sistem dengeyi koruyor',
+    'taskReasonCauseHighRisk':
+        'Risk puani yuksek oldugu icin daha koruyucu gorevler secildi',
+    'taskReasonCauseLowRisk':
+        'Risk puani dusuk oldugu icin daha genis aralikli gorevler secildi',
+    'taskReasonCauseTopTrigger': 'Baskin tetikleyici:',
+    'taskReasonCauseTopHour': 'Baskin risk saati:',
+    'taskReasonCauseBalanced':
+        'Mevcut veriler dengeli, standart adaptif plan uygulanıyor',
     'taskStartTitle': 'Gorev Hatirlatmasi',
     'taskFollowUpActionYes': 'Evet',
     'taskFollowUpActionNo': 'Hayir',
@@ -432,6 +454,27 @@ class AppTexts {
     'taskFollowUpPendingCount': 'Pending follow-ups',
     'openTaskFollowUpScreen': 'Open Task Follow-up Screen',
     'taskDeferredTenMinutes': 'Task deferred by 10 minutes.',
+    'taskReasonCardTitle': 'Task Decision Details',
+    'taskReasonRiskLine': 'Current risk score',
+    'taskReasonRecentRatio': 'Recent 10-task success ratio',
+    'taskReasonCadence': 'Active intensity level',
+    'taskReasonNextNotification': 'Next planned notification',
+    'taskReasonCause': 'Task selection reason',
+    'taskReasonNoRecentData': 'Not enough task data yet',
+    'taskReasonNoPlanned': 'No planned task notification',
+    'taskReasonCauseBootstrap':
+        'Initial task data is being formed; the system is calibrating',
+    'taskReasonCauseFailurePressure':
+        'Recent task struggles increased, so intensity was tightened',
+    'taskReasonCauseSuccessStability':
+        'Recent task performance is good, so the system keeps balance',
+    'taskReasonCauseHighRisk':
+        'High risk score led to more protective task choices',
+    'taskReasonCauseLowRisk': 'Low risk score led to wider-gap task choices',
+    'taskReasonCauseTopTrigger': 'Dominant trigger:',
+    'taskReasonCauseTopHour': 'Dominant risk hour:',
+    'taskReasonCauseBalanced':
+        'Current signals are balanced; standard adaptive plan is applied',
     'taskStartTitle': 'Task Reminder',
     'taskFollowUpActionYes': 'Yes',
     'taskFollowUpActionNo': 'No',

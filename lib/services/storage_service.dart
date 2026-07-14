@@ -678,8 +678,10 @@ class StorageService {
       return value == '1';
     }
 
-    final snapshot = await loadLatestBehaviorSnapshot();
-    return snapshot != null;
+    // Do not infer completion from behavior snapshots.
+    // A snapshot can exist right after breath test save, before first-task
+    // scheduling and completion flags are written.
+    return false;
   }
 
   Future<String?> loadSleepTime() async {
