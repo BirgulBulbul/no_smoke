@@ -9,17 +9,20 @@ import '../models/user_profile_snapshot.dart';
 import '../services/storage_service.dart';
 import 'home_page.dart';
 import 'risk_result_page.dart';
+import 'weekly_survey_page.dart';
 
 class BreathTestPage extends StatefulWidget {
   final String name;
   final String packsPerDay;
   final bool navigateToHomeOnComplete;
+  final bool askWeeklySurveyOnComplete;
 
   const BreathTestPage({
     super.key,
     this.name = 'User',
     this.packsPerDay = '1 paketten az',
     this.navigateToHomeOnComplete = false,
+    this.askWeeklySurveyOnComplete = false,
   });
 
   @override
@@ -176,6 +179,45 @@ class _BreathTestPageState extends State<BreathTestPage> {
 
     if (!mounted) {
       return;
+    }
+
+    if (widget.askWeeklySurveyOnComplete) {
+      final wantsWeeklySurvey = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: Text(context.t('weeklySurvey')),
+            content: const Text('Haftalık anketi şimdi yapmak ister misiniz?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: Text(context.t('no')),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(context.t('yes')),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (wantsWeeklySurvey == true) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => WeeklySurveyPage(
+              navigateToHomeAfterSave: true,
+              nameSeed: widget.name,
+            ),
+          ),
+        );
+        return;
+      }
     }
 
     Navigator.pushReplacement(

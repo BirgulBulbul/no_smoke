@@ -5,12 +5,20 @@ import '../core/app_texts.dart';
 import '../models/survey_record.dart';
 import '../models/user_profile_snapshot.dart';
 import 'breath_test_page.dart';
+import 'home_page.dart';
 import '../services/storage_service.dart';
 import '../widgets/consecutive_smoking_section.dart';
 import '../widgets/packs_per_day_section.dart';
 
 class WeeklySurveyPage extends StatefulWidget {
-  const WeeklySurveyPage({super.key});
+  final bool navigateToHomeAfterSave;
+  final String? nameSeed;
+
+  const WeeklySurveyPage({
+    super.key,
+    this.navigateToHomeAfterSave = false,
+    this.nameSeed,
+  });
 
   @override
   State<WeeklySurveyPage> createState() => _WeeklySurveyPageState();
@@ -184,6 +192,21 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
                   final latestUserName = await _resolveLatestUserName();
                   if (!mounted) return;
                   if (!context.mounted) return;
+
+                  if (widget.navigateToHomeAfterSave) {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => HomePage(
+                          name: widget.nameSeed ?? latestUserName,
+                          riskScore: _mood == 'İyi' ? 15 : _mood == 'Orta' ? 35 : 55,
+                          riskLevel: _mood == 'İyi' ? 'DÜŞÜK' : _mood == 'Orta' ? 'ORTA' : 'YÜKSEK',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(

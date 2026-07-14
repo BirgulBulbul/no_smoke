@@ -113,6 +113,7 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
             name: seed['name'] as String,
             packsPerDay: seed['packsPerDay'] as String,
             navigateToHomeOnComplete: true,
+            askWeeklySurveyOnComplete: true,
           ),
         ),
       );
