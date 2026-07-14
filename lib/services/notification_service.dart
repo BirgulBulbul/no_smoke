@@ -1,4 +1,4 @@
-import 'dart:async';
+importk  'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -31,15 +31,23 @@ class NotificationService {
   static const String _categoryTaskFollowUp = 'task_followup_category';
   static const String _taskStartChannelId = 'task_start_channel_v4';
   static const String _taskFollowUpChannelId = 'task_followup_channel_v5';
+  static const String _taskEscalationChannelId = 'task_escalation_channel_v1';
   static const String _breathReminderChannelId = 'breath_reminder_channel_v3';
-  static const Int32List _insistentFlag = Int32List.fromList(<int>[4]);
+  static const int _notificationTimeoutMs = 10000;
+  static const Duration _unansweredReminderDelay = Duration(minutes: 10);
   static final Int64List _taskVibrationPattern = Int64List.fromList(<int>[
     0,
-    1100,
-    700,
-    1100,
-    700,
-    1100,
+    1000,
+    500,
+    1000,
+    500,
+    1000,
+    500,
+    1000,
+    500,
+    1000,
+    500,
+    1000,
   ]);
 
   static Stream<Map<String, String>> get taskActionStream =>
@@ -152,6 +160,11 @@ class NotificationService {
       return;
     }
 
+    final reminderId = int.tryParse(payload['reminderId'] ?? '');
+    if (reminderId != null) {
+      unawaited(_plugin.cancel(reminderId));
+    }
+
     final type = payload['type'];
     if (type == _typeBreath) {
       final context = _navigatorKey?.currentContext;
@@ -187,30 +200,34 @@ class NotificationService {
     }
   }
 
-  static Future<void> showFirstTaskTriggerNotification({
+  static int _deriveReminderId(int sourceId) {
+    return (sourceId + 1000000000).remainder(2147483647);
+  }
+
+  static Future<void> _scheduleUnansweredTaskUpdateReminder({
     required String taskTitle,
-    required String taskDescription,
+    required String type,
+    required int reminderId,
+    required tz.TZDateTime triggerAt,
   }) async {
     final code = await LanguageService.loadSelectedLanguageCode();
-    final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
-    await _plugin.show(
-      id,
-      taskTitle,
-      taskDescription,
+    final scheduleMode = await _resolveAndroidScheduleMode();
+    await _plugin.zonedSchedule(
+      reminderId,
+      _text(code, 'taskEscalationTitle'),
+      '${_text(code, 'taskEscalationBodyPrefix')}\n$taskTitle',
+      triggerAt,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          _taskStartChannelId,
-          'İlk görev tetikleme',
+          _taskEscalationChannelId,
+          'Gorev guncelleme hatirlatici',
           importance: Importance.max,
           priority: Priority.high,
           playSound: true,
           enableVibration: true,
           vibrationPattern: _taskVibrationPattern,
-          ongoing: true,
-          autoCancel: false,
-          onlyAlertOnce: false,
-          additionalFlags: _insistentFlag,
-          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          timeoutAfter: _notificationTimeoutMs,
           category: AndroidNotificationCategory.reminder,
           actions: <AndroidNotificationAction>[
             AndroidNotificationAction(
@@ -231,7 +248,73 @@ class NotificationService {
           categoryIdentifier: _categoryTaskStart,
         ),
       ),
-      payload: jsonEncode({'type': _typeTaskStart, 'taskTitle': taskTitle}),
+      androidScheduleMode: scheduleMode,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      payload: jsonEncode({
+        'type': type,
+        'taskTitle': taskTitle,
+      }),
+    );
+  }
+
+  static Future<void> showFirstTaskTriggerNotification({
+    required String taskTitle,
+    required String taskDescription,
+  }) async {
+    final code = await LanguageService.loadSelectedLanguageCode();
+    final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
+    final reminderId = _deriveReminderId(id);
+    await _plugin.show(
+      id,
+      taskTitle,
+      taskDescription,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _taskStartChannelId,
+          'İlk görev tetikleme',
+          importance: Importance.max,
+          priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+          vibrationPattern: _taskVibrationPattern,
+          autoCancel: true,
+          onlyAlertOnce: false,
+          timeoutAfter: _notificationTimeoutMs,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          category: AndroidNotificationCategory.reminder,
+          actions: <AndroidNotificationAction>[
+            AndroidNotificationAction(
+              _actionTaskDone,
+              _text(code, 'taskActionDoneLabel'),
+              showsUserInterface: true,
+              cancelNotification: true,
+            ),
+            AndroidNotificationAction(
+              _actionTaskNotNow,
+              _text(code, 'taskActionNotNowLabel'),
+              showsUserInterface: true,
+              cancelNotification: true,
+            ),
+          ],
+        ),
+        iOS: const DarwinNotificationDetails(
+          categoryIdentifier: _categoryTaskStart,
+        ),
+      ),
+      payload: jsonEncode({
+        'type': _typeTaskStart,
+        'taskTitle': taskTitle,
+        'reminderId': '$reminderId',
+      }),
+    );
+
+    final reminderAt = tz.TZDateTime.now(tz.local).add(_unansweredReminderDelay);
+    await _scheduleUnansweredTaskUpdateReminder(
+      taskTitle: taskTitle,
+      type: _typeTaskStart,
+      reminderId: reminderId,
+      triggerAt: reminderAt,
     );
   }
 
@@ -244,6 +327,7 @@ class NotificationService {
     final now = tz.TZDateTime.now(tz.local);
     final fireAt = now.add(delay);
     final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
+    final reminderId = _deriveReminderId(id);
     await _plugin.zonedSchedule(
       id,
       _text(code, 'taskStartTitle'),
@@ -258,11 +342,10 @@ class NotificationService {
           playSound: true,
           enableVibration: true,
           vibrationPattern: _taskVibrationPattern,
-          ongoing: true,
-          autoCancel: false,
+          autoCancel: true,
           onlyAlertOnce: false,
-          additionalFlags: _insistentFlag,
-          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          timeoutAfter: _notificationTimeoutMs,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
           category: AndroidNotificationCategory.reminder,
           actions: <AndroidNotificationAction>[
             AndroidNotificationAction(
@@ -289,7 +372,15 @@ class NotificationService {
       payload: jsonEncode({
         'type': _typeTaskStart,
         'taskTitle': taskDescription,
+        'reminderId': '$reminderId',
       }),
+    );
+
+    await _scheduleUnansweredTaskUpdateReminder(
+      taskTitle: taskDescription,
+      type: _typeTaskStart,
+      reminderId: reminderId,
+      triggerAt: fireAt.add(_unansweredReminderDelay),
     );
   }
 
@@ -363,6 +454,7 @@ class NotificationService {
     final notificationId = DateTime.now().millisecondsSinceEpoch.remainder(
       2147483647,
     );
+    final reminderId = _deriveReminderId(notificationId);
 
     await _plugin.zonedSchedule(
       notificationId,
@@ -380,11 +472,10 @@ class NotificationService {
           playSound: true,
           enableVibration: true,
           vibrationPattern: _taskVibrationPattern,
-          ongoing: true,
-          autoCancel: false,
+          autoCancel: true,
           onlyAlertOnce: false,
-          additionalFlags: _insistentFlag,
-          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          timeoutAfter: _notificationTimeoutMs,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
           category: AndroidNotificationCategory.call,
           fullScreenIntent: true,
           actions: <AndroidNotificationAction>[
@@ -410,7 +501,18 @@ class NotificationService {
       androidScheduleMode: scheduleMode,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
-      payload: jsonEncode({'type': _typeTaskFollowUp, 'taskTitle': taskTitle}),
+      payload: jsonEncode({
+        'type': _typeTaskFollowUp,
+        'taskTitle': taskTitle,
+        'reminderId': '$reminderId',
+      }),
+    );
+
+    await _scheduleUnansweredTaskUpdateReminder(
+      taskTitle: taskTitle,
+      type: _typeTaskFollowUp,
+      reminderId: reminderId,
+      triggerAt: fireAt.add(_unansweredReminderDelay),
     );
   }
 
@@ -469,6 +571,9 @@ class NotificationService {
           'Surus sonrasi cevaplayin: Gorevi basariyla tamamladiniz mi?',
       'taskTimerStartedTitle': 'İlk Görev',
       'taskTimerStartedBody': 'Görev başladı:',
+      'taskEscalationTitle': 'Gorev guncellendi',
+      'taskEscalationBodyPrefix':
+          '10 saniye icinde yanit alinmadi. 10 dakika sonra guncel gorev hatirlatmasi:',
       'taskTimerDuration': 'Sayaç',
       'minutesShort': 'dakika',
     };
@@ -492,6 +597,9 @@ class NotificationService {
           'Answer after driving: Did you complete the task successfully?',
       'taskTimerStartedTitle': 'First Task',
       'taskTimerStartedBody': 'Task started:',
+      'taskEscalationTitle': 'Task updated',
+      'taskEscalationBodyPrefix':
+          'No response in 10 seconds. Updated task reminder after 10 minutes:',
       'taskTimerDuration': 'Timer',
       'minutesShort': 'minutes',
     };
