@@ -3,10 +3,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/app_texts.dart';
 import 'risk_result_page.dart';
 
 class BreathTestPage extends StatefulWidget {
-  const BreathTestPage({super.key});
+  final String name;
+  final String packsPerDay;
+
+  const BreathTestPage({
+    super.key,
+    this.name = 'User',
+    this.packsPerDay = '1 paketten az',
+  });
 
   @override
   State<BreathTestPage> createState() => _BreathTestPageState();
@@ -83,13 +91,18 @@ class _BreathTestPageState extends State<BreathTestPage> {
       riskLevel = 'DÜŞÜK';
     }
 
+    if (!mounted) {
+      return;
+    }
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => RiskResultPage(
-          name: 'Kullanıcı',
+          name: widget.name,
           riskScore: riskScore,
           riskLevel: riskLevel,
+          packsPerDay: widget.packsPerDay,
           exhaleTestSeconds: _test1Seconds,
           inhaleTestSeconds: _test2Seconds,
         ),
@@ -99,17 +112,21 @@ class _BreathTestPageState extends State<BreathTestPage> {
 
   String _getInstruction() {
     if (_currentTest == 1) {
-      return 'Test 1: Nefesinizi normal şekilde dışarı verin.\n\nİlk nefes alma ihtiyacı hissettiğinizde butona basın.';
+      return context.t('test1Instruction');
     }
 
-    return 'Test 2: Derin bir nefes alın ve tutmaya çalışın.\n\nİlk nefes alma ihtiyacı hissettiğinizde butona basın.';
+    return context.t('test2Instruction');
+  }
+
+  String _getCurrentTestName() {
+    return _currentTest == 1 ? context.t('test1Name') : context.t('test2Name');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Nefes Testi'),
+        title: Text(context.t('breathTest')),
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
@@ -117,11 +134,16 @@ class _BreathTestPageState extends State<BreathTestPage> {
           children: [
             const SizedBox(height: 24),
             Text(
-              'Test $_currentTest / 2',
+              '${context.t('test')} $_currentTest / 2',
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _getCurrentTestName(),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 20),
             Text(
@@ -144,8 +166,8 @@ class _BreathTestPageState extends State<BreathTestPage> {
                 height: 60,
                 child: ElevatedButton(
                   onPressed: _startCurrentTest,
-                  child: const Text(
-                    'Başla',
+                  child: Text(
+                    context.t('start'),
                     style: TextStyle(fontSize: 20),
                   ),
                 ),
@@ -156,8 +178,8 @@ class _BreathTestPageState extends State<BreathTestPage> {
                 height: 60,
                 child: ElevatedButton(
                   onPressed: _handleBreathPressed,
-                  child: const Text(
-                    'Nefes Aldım',
+                  child: Text(
+                    context.t('iBreathed'),
                     style: TextStyle(fontSize: 20),
                   ),
                 ),

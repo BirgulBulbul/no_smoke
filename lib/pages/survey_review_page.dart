@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_texts.dart';
 import '../models/survey_record.dart';
+import '../services/behavior_engine.dart';
 import 'home_page.dart';
 import 'survey_history_page.dart';
 
 class SurveyReviewPage extends StatelessWidget {
   final SurveyRecord currentRecord;
   final SurveyRecord? previousRecord;
+  final BehaviorEngine _behaviorEngine = BehaviorEngine();
 
-  const SurveyReviewPage({
+  SurveyReviewPage({
     super.key,
     required this.currentRecord,
     required this.previousRecord,
@@ -16,9 +19,10 @@ class SurveyReviewPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dailyCigarettesDelta = previousRecord == null
-        ? null
-        : currentRecord.dailyCigarettes - previousRecord!.dailyCigarettes;
+    final packLevelDelta = previousRecord == null
+      ? null
+      : SurveyRecord.packLevel(currentRecord.packsPerDay) -
+        SurveyRecord.packLevel(previousRecord!.packsPerDay);
     final exhaleDelta = previousRecord == null
         ? null
         : currentRecord.exhaleTestSeconds - previousRecord!.exhaleTestSeconds;
@@ -28,15 +32,27 @@ class SurveyReviewPage extends StatelessWidget {
     final riskDelta = previousRecord == null
         ? null
         : currentRecord.riskScore - previousRecord!.riskScore;
+    final consecutiveSmokingCurrent = _buildConsecutiveSmokingLabel(currentRecord);
+    final consecutiveSmokingPrevious = previousRecord == null
+      ? null
+      : _buildConsecutiveSmokingLabel(previousRecord!);
+    final consecutiveSmokingTrend = previousRecord == null
+      ? context.t('firstEvaluation')
+      : _behaviorEngine.evaluateConsecutiveSmokingTrend(
+        previousHabit: previousRecord!.consecutiveSmokingHabit,
+        previousCount: previousRecord!.consecutiveSmokingCount,
+        currentHabit: currentRecord.consecutiveSmokingHabit,
+        currentCount: currentRecord.consecutiveSmokingCount,
+        );
 
-    final hasImprovement = (dailyCigarettesDelta ?? 0) < 0 ||
+    final hasImprovement = (packLevelDelta ?? 0) < 0 ||
         (exhaleDelta ?? 0) < 0 ||
         (inhaleDelta ?? 0) < 0 ||
         (riskDelta ?? 0) < 0;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Değerlendirme'),
+        title: Text(context.t('evaluation')),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -44,21 +60,33 @@ class SurveyReviewPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              hasImprovement ? 'İlerleme var, iyi gidiyorsunuz.' : 'İlerleme görünmüyor; kendinizi destekleyin.',
+              hasImprovement ? context.t('progressPositive') : context.t('progressNegative'),
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
               hasImprovement
-                  ? 'Gelişim gösteren alanlar olumlu rapor olarak kaydedildi.'
-                  : 'Bir önceki değerlendirmeye göre gerileme veya değişim yok. Devam edin.',
+                  ? context.t('progressPositiveDetail')
+                  : context.t('progressNegativeDetail'),
               style: const TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 20),
-            _buildMetric('Günlük sigara değişimi', dailyCigarettesDelta, 'adet'),
-            _buildMetric('Nefes verme testi değişimi', exhaleDelta, 'sn'),
-            _buildMetric('Nefes tutma testi değişimi', inhaleDelta, 'sn'),
-            _buildMetric('Risk puanı değişimi', riskDelta, 'puan'),
+            _buildPackMetric(),
+            _buildMetric(context.t('exhaleDelta'), exhaleDelta, context.t('secShort'), context),
+            _buildMetric(context.t('inhaleDelta'), inhaleDelta, context.t('secShort'), context),
+            _buildMetric(context.t('riskDelta'), riskDelta, context.t('pointShort'), context),
+            const SizedBox(height: 8),
+            Card(
+              child: ListTile(
+                title: Text(context.t('chainSmoking')),
+                subtitle: Text(
+                  previousRecord == null
+                      ? context.t('firstEvaluation')
+                      : '${consecutiveSmokingPrevious ?? context.t('noRecordYet')} -> $consecutiveSmokingCurrent',
+                ),
+                trailing: Text(consecutiveSmokingTrend),
+              ),
+            ),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
@@ -70,7 +98,7 @@ class SurveyReviewPage extends StatelessWidget {
                     MaterialPageRoute(builder: (_) => const SurveyHistoryPage()),
                   );
                 },
-                child: const Text('Tüm geçmiş anketleri gör'),
+                child: Text(context.t('viewAllSurveys')),
               ),
             ),
             const SizedBox(height: 12),
@@ -91,7 +119,7 @@ class SurveyReviewPage extends StatelessWidget {
                     (route) => false,
                   );
                 },
-                child: const Text('Ana sayfaya dön'),
+                child: Text(context.t('backToHome')),
               ),
             ),
           ],
@@ -100,13 +128,36 @@ class SurveyReviewPage extends StatelessWidget {
     );
   }
 
-  Widget _buildMetric(String title, int? delta, String unit) {
-    final display = delta == null ? 'İlk değerlendirme' : '${delta > 0 ? '+' : ''}$delta $unit';
+  Widget _buildMetric(String title, int? delta, String unit, BuildContext context) {
+    final display = delta == null ? context.t('firstEvaluation') : '${delta > 0 ? '+' : ''}$delta $unit';
     return Card(
       child: ListTile(
         title: Text(title),
         trailing: Text(display),
       ),
+    );
+  }
+
+  Widget _buildPackMetric() {
+    final display = previousRecord == null
+        ? 'firstEvaluation'
+        : '${previousRecord!.packsPerDay} -> ${currentRecord.packsPerDay}';
+    return Card(
+      child: ListTile(
+        title: Builder(
+          builder: (context) => Text(context.t('packChangeDaily')),
+        ),
+        trailing: Builder(
+          builder: (context) => Text(display == 'firstEvaluation' ? context.t('firstEvaluation') : display),
+        ),
+      ),
+    );
+  }
+
+  String _buildConsecutiveSmokingLabel(SurveyRecord record) {
+    return _behaviorEngine.summarizeConsecutiveSmoking(
+      habit: record.consecutiveSmokingHabit,
+      count: record.consecutiveSmokingCount,
     );
   }
 }

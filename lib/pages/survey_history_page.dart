@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_texts.dart';
 import '../models/survey_record.dart';
 import '../services/storage_service.dart';
 
@@ -24,7 +25,7 @@ class _SurveyHistoryPageState extends State<SurveyHistoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Anket Geçmişi'),
+        title: Text(context.t('surveyHistory')),
       ),
       body: FutureBuilder<List<SurveyRecord>>(
         future: _historyFuture,
@@ -35,7 +36,7 @@ class _SurveyHistoryPageState extends State<SurveyHistoryPage> {
 
           final records = snapshot.data!;
           if (records.isEmpty) {
-            return const Center(child: Text('Henüz kayıtlı anket yok.'));
+            return Center(child: Text(context.t('noSurveyYet')));
           }
 
           return ListView.builder(
@@ -46,9 +47,9 @@ class _SurveyHistoryPageState extends State<SurveyHistoryPage> {
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
                 child: ListTile(
-                  title: Text(record.name.isEmpty ? 'İsimsiz kullanıcı' : record.name),
+                  title: Text(record.name.isEmpty ? context.t('unnamedUser') : record.name),
                   subtitle: Text(
-                    '${record.completedAt.day}/${record.completedAt.month}/${record.completedAt.year} • Risk: ${record.riskScore} • ${record.riskLevel}',
+                    '${record.title} • ${record.completedAt.day}/${record.completedAt.month}/${record.completedAt.year} • ${context.t('risk')}: ${record.riskScore} • ${record.riskLevel}',
                   ),
                   trailing: const Icon(Icons.history),
                 ),

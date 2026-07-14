@@ -19,18 +19,8 @@ class RiskEngine {
       score += 2;
     }
 
-    // Günlük sigara sayısı
-    if (profile.cigarettesPerDay <= 5) {
-      score += 5;
-    } else if (profile.cigarettesPerDay <= 10) {
-      score += 10;
-    } else if (profile.cigarettesPerDay <= 20) {
-      score += 15;
-    } else if (profile.cigarettesPerDay <= 30) {
-      score += 20;
-    } else {
-      score += 25;
-    }
+    // Günlük paket seviyesi
+    score += _packRiskScore(profile.packsPerDay);
 
     // İlk sigara süresi
     if (profile.firstCigaretteMinutes <= 5) {
@@ -128,5 +118,26 @@ class RiskEngine {
       level: level,
       description: description,
     );
+  }
+
+  static int _packRiskScore(String packsPerDay) {
+    switch (packsPerDay) {
+      case '1 paketten az':
+        return 5;
+      case '1 paket':
+        return 10;
+      case '2 paket':
+        return 20;
+      case '3 paket':
+        return 30;
+      case '3+ paket':
+      case '4 paket':
+      case '5 paket':
+      case '6 paket':
+      case '7+ paket':
+        return 40;
+      default:
+        return 5;
+    }
   }
 }

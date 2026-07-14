@@ -1,5 +1,13 @@
 ﻿import 'package:flutter/material.dart';
 
+import '../core/app_texts.dart';
+import '../models/survey_record.dart';
+import '../models/user_profile_snapshot.dart';
+import '../services/storage_service.dart';
+import '../services/notification_service.dart';
+import '../widgets/consecutive_smoking_section.dart';
+import '../widgets/no_smoke_logo.dart';
+import '../widgets/packs_per_day_section.dart';
 import 'breath_test_page.dart';
 
 class SurveyPage extends StatefulWidget {
@@ -10,14 +18,16 @@ class SurveyPage extends StatefulWidget {
 }
 
 class _SurveyPageState extends State<SurveyPage> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final StorageService _storageService = StorageService();
   final TextEditingController nameController = TextEditingController();
   final TextEditingController ageController = TextEditingController();
-  final TextEditingController cigarettesController = TextEditingController();
   final TextEditingController smokingYearsController = TextEditingController();
   final TextEditingController workStartController = TextEditingController();
   final TextEditingController workEndController = TextEditingController();
 
-  String gender = 'Erkek';
+  String? gender;
+  String? profession;
   String firstCigaretteRange = '10-30';
   String smokeFreeRange = '30-60';
   String workplaceSmokingRule = 'Hayır';
@@ -25,6 +35,10 @@ class _SurveyPageState extends State<SurveyPage> {
   String quitReason = 'Sağlık';
   String sleepTime = '21:00';
   String wakeTime = '07:00';
+  String packOption = '1 paketten az';
+  String? highPackOption;
+  String consecutiveSmokingHabit = 'Hayır';
+  String? consecutiveSmokingCount;
 
   bool hypertension = false;
   bool asthma = false;
@@ -33,6 +47,19 @@ class _SurveyPageState extends State<SurveyPage> {
   bool heartDisease = false;
 
   final Set<String> triggerSet = <String>{};
+
+  static const List<String> professionOptions = [
+    'Öğrenci',
+    'Memur',
+    'İşçi',
+    'Sağlık Çalışanı',
+    'Öğretmen',
+    'Mühendis',
+    'Esnaf',
+    'Emekli',
+    'Serbest Çalışıyor',
+    'Diğer',
+  ];
 
   Widget sectionTitle(String title) {
     return Padding(
@@ -75,11 +102,117 @@ class _SurveyPageState extends State<SurveyPage> {
     );
   }
 
+  String get _resolvedPacksPerDay {
+    if (packOption == '3+ paket') {
+      return highPackOption ?? '4 paket';
+    }
+    return packOption;
+  }
+
+  List<String> _selectedTriggerLabels() {
+    final mapping = <String, String>{
+      'coffee': 'Kahve',
+      'meal': 'Yemek Sonrasi',
+      'driving': 'Arac',
+      'stress': 'Stres',
+      'phone': 'Telefon',
+      'social': 'Sosyal Ortam',
+      'alcohol': 'Alkol',
+    };
+    return triggerSet.map((key) => mapping[key] ?? key).toList();
+  }
+
+  List<String> _selectedHealthConditions() {
+    final health = <String>[];
+    if (hypertension) health.add('Hipertansiyon');
+    if (asthma) health.add('Astim');
+    if (diabetes) health.add('Diyabet');
+    if (copd) health.add('KOAH');
+    if (heartDisease) health.add('Kalp Hastaligi');
+    return health;
+  }
+
+  Future<void> _saveInitialSurveyRecord() async {
+    final initialTitle = context.t('initialRecordTitle');
+    await _storageService.saveSleepTime(sleepTime);
+    await NotificationService.scheduleDailyBreathReminder(sleepTime: sleepTime);
+
+    final recordId = DateTime.now().millisecondsSinceEpoch.toString();
+    final selectedTriggers = _selectedTriggerLabels();
+    final selectedHealth = _selectedHealthConditions();
+
+    final record = SurveyRecord(
+      id: recordId,
+      completedAt: DateTime.now(),
+      type: 'initial',
+      title: initialTitle,
+      name: nameController.text.trim(),
+      packsPerDay: _resolvedPacksPerDay,
+      exhaleTestSeconds: 0,
+      inhaleTestSeconds: 0,
+      riskScore: 0,
+      riskLevel: 'BAŞLANGIÇ',
+      consecutiveSmokingHabit: consecutiveSmokingHabit,
+      consecutiveSmokingCount: consecutiveSmokingHabit == 'Hayır' ? null : consecutiveSmokingCount,
+    );
+    await _storageService.saveSurveyRecord(record);
+
+    await _storageService.saveSurveyDetail(
+      recordId: recordId,
+      triggers: selectedTriggers,
+      healthConditions: selectedHealth,
+      firstCigaretteRange: firstCigaretteRange,
+      smokeFreeRange: smokeFreeRange,
+      profession: profession,
+      sleepTime: sleepTime,
+      wakeTime: wakeTime,
+      stressLevel: stressLevel,
+      quitReason: quitReason,
+      workStart: workStartController.text.trim(),
+      workEnd: workEndController.text.trim(),
+      workplaceSmokingRule: workplaceSmokingRule,
+    );
+
+    await _storageService.saveUserProfileSnapshot(
+      UserProfileSnapshot(
+        id: 'profile_$recordId',
+        createdAt: DateTime.now(),
+        riskScore: 0,
+        packsPerDay: _resolvedPacksPerDay,
+        firstCigaretteRange: firstCigaretteRange,
+        smokeFreeRange: smokeFreeRange,
+        consecutiveSmokingHabit: consecutiveSmokingHabit,
+        consecutiveSmokingCount: consecutiveSmokingCount,
+        triggers: selectedTriggers,
+        healthConditions: selectedHealth,
+        profession: profession ?? 'Belirtilmedi',
+        sleepTime: sleepTime,
+        wakeTime: wakeTime,
+        latestExhaleSeconds: 0,
+        latestInhaleSeconds: 0,
+      ),
+    );
+  }
+
+  bool _hasRequiredFields() {
+    return nameController.text.trim().isNotEmpty &&
+        ageController.text.trim().isNotEmpty &&
+        gender != null &&
+        profession != null &&
+        smokingYearsController.text.trim().isNotEmpty &&
+        sleepTime.isNotEmpty &&
+        wakeTime.isNotEmpty &&
+        workStartController.text.trim().isNotEmpty &&
+        workEndController.text.trim().isNotEmpty &&
+        workplaceSmokingRule.isNotEmpty &&
+        stressLevel.isNotEmpty &&
+        quitReason.isNotEmpty;
+  }
+
   @override
   void dispose() {
     nameController.dispose();
     ageController.dispose();
-    cigarettesController.dispose();
     smokingYearsController.dispose();
     workStartController.dispose();
     workEndController.dispose();
@@ -89,78 +222,138 @@ class _SurveyPageState extends State<SurveyPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('NO SMOKE'),
-      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Başlangıç Anketi',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
+              const NoSmokeLogo(size: 110, showLabel: true),
+              const SizedBox(height: 20),
+              Text(
+                context.t('initialSurvey'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            TextField(
+              const SizedBox(height: 20),
+            TextFormField(
               controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Ad',
+              decoration: InputDecoration(
+                labelText: context.t('name'),
                 border: OutlineInputBorder(),
               ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return '';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 10),
-            TextField(
-              controller: ageController,
-              keyboardType: TextInputType.number,
+            DropdownButtonFormField<String>(
+              initialValue: profession,
               decoration: const InputDecoration(
-                labelText: 'Yaş',
+                labelText: 'Meslek',
                 border: OutlineInputBorder(),
               ),
+              hint: const Text('Lütfen seçin'),
+              items: professionOptions
+                  .map(
+                    (value) => DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                setState(() {
+                  profession = value;
+                });
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return '';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: ageController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: context.t('age'),
+                border: OutlineInputBorder(),
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return '';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               initialValue: gender,
-              decoration: const InputDecoration(
-                labelText: 'Cinsiyet',
+              decoration: InputDecoration(
+                labelText: context.t('gender'),
                 border: OutlineInputBorder(),
               ),
-              items: const [
-                DropdownMenuItem(value: 'Erkek', child: Text('Erkek')),
-                DropdownMenuItem(value: 'Kadın', child: Text('Kadın')),
+              hint: const Text('Lütfen seçin'),
+              items: [
+                DropdownMenuItem(value: 'Erkek', child: Text(context.t('male'))),
+                DropdownMenuItem(value: 'Kadın', child: Text(context.t('female'))),
               ],
               onChanged: (value) {
                 setState(() {
-                  gender = value!;
+                  gender = value;
+                });
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return '';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 10),
+            sectionTitle(context.t('smokingInfo')),
+            PacksPerDaySection(
+              selectedPackOption: packOption,
+              selectedHighPackOption: highPackOption,
+              onPackOptionChanged: (value) {
+                setState(() {
+                  packOption = value;
+                  if (value != '3+ paket') {
+                    highPackOption = null;
+                  } else {
+                    highPackOption ??= PacksPerDaySection.highPackOptions.first;
+                  }
+                });
+              },
+              onHighPackOptionChanged: (value) {
+                setState(() {
+                  highPackOption = value;
                 });
               },
             ),
             const SizedBox(height: 10),
-            sectionTitle('Sigara Bilgileri'),
-            TextField(
-              controller: cigarettesController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Günlük Sigara Sayısı',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               initialValue: firstCigaretteRange,
-              decoration: const InputDecoration(
-                labelText: 'İlk sigara ne zaman?',
+              decoration: InputDecoration(
+                labelText: context.t('firstCigaretteWhen'),
                 border: OutlineInputBorder(),
               ),
-              items: const [
-                DropdownMenuItem(value: '0-5', child: Text('0-5 dakika')),
-                DropdownMenuItem(value: '5-10', child: Text('5-10 dakika')),
-                DropdownMenuItem(value: '10-30', child: Text('10-30 dakika')),
-                DropdownMenuItem(value: '30-60', child: Text('30-60 dakika')),
-                DropdownMenuItem(value: '60+', child: Text('60 dakika ve üzeri')),
+              items: [
+                DropdownMenuItem(value: '0-5', child: Text(context.t('firstCigarette0to5'))),
+                DropdownMenuItem(value: '5-10', child: Text(context.t('firstCigarette5to10'))),
+                DropdownMenuItem(value: '10-30', child: Text(context.t('firstCigarette10to30'))),
+                DropdownMenuItem(value: '30-60', child: Text(context.t('firstCigarette30to60'))),
+                DropdownMenuItem(value: '60+', child: Text(context.t('firstCigarette60plus'))),
               ],
               onChanged: (value) {
                 setState(() {
@@ -171,17 +364,17 @@ class _SurveyPageState extends State<SurveyPage> {
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               initialValue: smokeFreeRange,
-              decoration: const InputDecoration(
-                labelText: 'En fazla ne kadar sigarasız kalabiliyorsunuz?',
+              decoration: InputDecoration(
+                labelText: context.t('maxSmokeFreeDuration'),
                 border: OutlineInputBorder(),
               ),
-              items: const [
-                DropdownMenuItem(value: '0-15', child: Text('0-15 dakika')),
-                DropdownMenuItem(value: '15-30', child: Text('15-30 dakika')),
-                DropdownMenuItem(value: '30-60', child: Text('30-60 dakika')),
-                DropdownMenuItem(value: '60-120', child: Text('1-2 saat')),
-                DropdownMenuItem(value: '120-240', child: Text('2-4 saat')),
-                DropdownMenuItem(value: '240+', child: Text('4 saat ve üzeri')),
+              items: [
+                DropdownMenuItem(value: '0-15', child: Text(context.t('smokeFree0to15'))),
+                DropdownMenuItem(value: '15-30', child: Text(context.t('smokeFree15to30'))),
+                DropdownMenuItem(value: '30-60', child: Text(context.t('smokeFree30to60'))),
+                DropdownMenuItem(value: '60-120', child: Text(context.t('smokeFree60to120'))),
+                DropdownMenuItem(value: '120-240', child: Text(context.t('smokeFree120to240'))),
+                DropdownMenuItem(value: '240+', child: Text(context.t('smokeFree240plus'))),
               ],
               onChanged: (value) {
                 setState(() {
@@ -190,20 +383,26 @@ class _SurveyPageState extends State<SurveyPage> {
               },
             ),
             const SizedBox(height: 10),
-            TextField(
+            TextFormField(
               controller: smokingYearsController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Kaç yıldır sigara içiyorsunuz?',
+              decoration: InputDecoration(
+                labelText: context.t('smokingYears'),
                 border: OutlineInputBorder(),
               ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return '';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 20),
-            sectionTitle('Yaşam Düzeni'),
+            sectionTitle(context.t('lifeRoutine')),
             DropdownButtonFormField<String>(
               initialValue: sleepTime,
-              decoration: const InputDecoration(
-                labelText: 'Uyku saati',
+              decoration: InputDecoration(
+                labelText: context.t('sleepTime'),
                 border: OutlineInputBorder(),
               ),
               items: timeOptions
@@ -220,11 +419,30 @@ class _SurveyPageState extends State<SurveyPage> {
                 });
               },
             ),
+            ConsecutiveSmokingSection(
+              consecutiveSmokingHabit: consecutiveSmokingHabit,
+              consecutiveSmokingCount: consecutiveSmokingCount,
+              onHabitChanged: (value) {
+                setState(() {
+                  consecutiveSmokingHabit = value;
+                  if (value == 'Hayır') {
+                    consecutiveSmokingCount = null;
+                  } else {
+                    consecutiveSmokingCount ??= ConsecutiveSmokingSection.countOptions.first;
+                  }
+                });
+              },
+              onCountChanged: (value) {
+                setState(() {
+                  consecutiveSmokingCount = value;
+                });
+              },
+            ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               initialValue: wakeTime,
-              decoration: const InputDecoration(
-                labelText: 'Uyanma saati',
+              decoration: InputDecoration(
+                labelText: context.t('wakeTime'),
                 border: OutlineInputBorder(),
               ),
               items: timeOptions
@@ -242,32 +460,44 @@ class _SurveyPageState extends State<SurveyPage> {
               },
             ),
             const SizedBox(height: 10),
-            TextField(
+            TextFormField(
               controller: workStartController,
-              decoration: const InputDecoration(
-                labelText: 'Çalışma başlangıç saati',
+              decoration: InputDecoration(
+                labelText: context.t('workStart'),
                 border: OutlineInputBorder(),
               ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return '';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 10),
-            TextField(
+            TextFormField(
               controller: workEndController,
-              decoration: const InputDecoration(
-                labelText: 'Çalışma bitiş saati',
+              decoration: InputDecoration(
+                labelText: context.t('workEnd'),
                 border: OutlineInputBorder(),
               ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return '';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               initialValue: workplaceSmokingRule,
-              decoration: const InputDecoration(
-                labelText: 'İş yerinde sigara içilebiliyor mu?',
+              decoration: InputDecoration(
+                labelText: context.t('workplaceSmoking'),
                 border: OutlineInputBorder(),
               ),
-              items: const [
-                DropdownMenuItem(value: 'Evet', child: Text('Evet')),
-                DropdownMenuItem(value: 'Hayır', child: Text('Hayır')),
-                DropdownMenuItem(value: 'Sadece molalarda', child: Text('Sadece molalarda')),
+              items: [
+                DropdownMenuItem(value: 'Evet', child: Text(context.t('yes'))),
+                DropdownMenuItem(value: 'Hayır', child: Text(context.t('no'))),
+                DropdownMenuItem(value: 'Sadece molalarda', child: Text(context.t('onlyBreaks'))),
               ],
               onChanged: (value) {
                 setState(() {
@@ -276,53 +506,53 @@ class _SurveyPageState extends State<SurveyPage> {
               },
             ),
             const SizedBox(height: 20),
-            sectionTitle('Sağlık Durumu'),
+            sectionTitle(context.t('healthStatus')),
             CheckboxListTile(
               value: hypertension,
-              title: const Text('Hipertansiyon'),
+              title: Text(context.t('hypertension')),
               onChanged: (value) => setState(() => hypertension = value ?? false),
             ),
             CheckboxListTile(
               value: asthma,
-              title: const Text('Astım'),
+              title: Text(context.t('asthma')),
               onChanged: (value) => setState(() => asthma = value ?? false),
             ),
             CheckboxListTile(
               value: diabetes,
-              title: const Text('Diyabet'),
+              title: Text(context.t('diabetes')),
               onChanged: (value) => setState(() => diabetes = value ?? false),
             ),
             CheckboxListTile(
               value: copd,
-              title: const Text('KOAH'),
+              title: Text(context.t('copd')),
               onChanged: (value) => setState(() => copd = value ?? false),
             ),
             CheckboxListTile(
               value: heartDisease,
-              title: const Text('Kalp Hastalığı'),
+              title: Text(context.t('heartDisease')),
               onChanged: (value) => setState(() => heartDisease = value ?? false),
             ),
             const SizedBox(height: 20),
-            sectionTitle('Sigara Tetikleyicileri'),
-            triggerTile('Kahve içerken', 'coffee'),
-            triggerTile('Yemek sonrası', 'meal'),
-            triggerTile('Araç kullanırken', 'driving'),
-            triggerTile('Stresliyken', 'stress'),
-            triggerTile('Telefonda konuşurken', 'phone'),
-            triggerTile('Sosyal ortamda', 'social'),
-            triggerTile('Alkol kullanırken', 'alcohol'),
+            sectionTitle(context.t('triggerTitle')),
+            triggerTile(context.t('triggerCoffee'), 'coffee'),
+            triggerTile(context.t('triggerMeal'), 'meal'),
+            triggerTile(context.t('triggerDriving'), 'driving'),
+            triggerTile(context.t('triggerStress'), 'stress'),
+            triggerTile(context.t('triggerPhone'), 'phone'),
+            triggerTile(context.t('triggerSocial'), 'social'),
+            triggerTile(context.t('triggerAlcohol'), 'alcohol'),
             const SizedBox(height: 20),
-            sectionTitle('Stres Seviyesi'),
+            sectionTitle(context.t('stressTitle')),
             DropdownButtonFormField<String>(
               initialValue: stressLevel,
-              decoration: const InputDecoration(
-                labelText: 'Stres seviyesi',
+              decoration: InputDecoration(
+                labelText: context.t('stressTitle'),
                 border: OutlineInputBorder(),
               ),
-              items: const [
-                DropdownMenuItem(value: 'Düşük', child: Text('Düşük')),
-                DropdownMenuItem(value: 'Orta', child: Text('Orta')),
-                DropdownMenuItem(value: 'Yüksek', child: Text('Yüksek')),
+              items: [
+                DropdownMenuItem(value: 'Düşük', child: Text(context.t('stressLow'))),
+                DropdownMenuItem(value: 'Orta', child: Text(context.t('stressMedium'))),
+                DropdownMenuItem(value: 'Yüksek', child: Text(context.t('stressHigh'))),
               ],
               onChanged: (value) {
                 setState(() {
@@ -331,19 +561,19 @@ class _SurveyPageState extends State<SurveyPage> {
               },
             ),
             const SizedBox(height: 10),
-            sectionTitle('Bırakma Sebebi'),
+            sectionTitle(context.t('quitReasonTitle')),
             DropdownButtonFormField<String>(
               initialValue: quitReason,
-              decoration: const InputDecoration(
-                labelText: 'Bırakma sebebi',
+              decoration: InputDecoration(
+                labelText: context.t('quitReason'),
                 border: OutlineInputBorder(),
               ),
-              items: const [
-                DropdownMenuItem(value: 'Sağlık', child: Text('Sağlık')),
-                DropdownMenuItem(value: 'Aile', child: Text('Aile')),
-                DropdownMenuItem(value: 'Maddi sebepler', child: Text('Maddi sebepler')),
-                DropdownMenuItem(value: 'Çocuklar', child: Text('Çocuklar')),
-                DropdownMenuItem(value: 'Performans', child: Text('Performans')),
+              items: [
+                DropdownMenuItem(value: 'Sağlık', child: Text(context.t('quitHealth'))),
+                DropdownMenuItem(value: 'Aile', child: Text(context.t('quitFamily'))),
+                DropdownMenuItem(value: 'Maddi sebepler', child: Text(context.t('quitMoney'))),
+                DropdownMenuItem(value: 'Çocuklar', child: Text(context.t('quitChildren'))),
+                DropdownMenuItem(value: 'Performans', child: Text(context.t('quitPerformance'))),
               ],
               onChanged: (value) {
                 setState(() {
@@ -356,22 +586,40 @@ class _SurveyPageState extends State<SurveyPage> {
               width: double.infinity,
               height: 60,
               child: ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
+                  final formValid = _formKey.currentState?.validate() ?? false;
+                  if (!formValid || !_hasRequiredFields()) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Lütfen tüm zorunlu alanları doldurunuz.'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  await _saveInitialSurveyRecord();
+                  if (!mounted) return;
+                  if (!context.mounted) return;
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const BreathTestPage(),
+                      builder: (_) => BreathTestPage(
+                        name: nameController.text.trim(),
+                        packsPerDay: _resolvedPacksPerDay,
+                      ),
                     ),
                   );
                 },
-                child: const Text(
-                  'Devam Et',
+                child: Text(
+                  context.t('continue'),
                   style: TextStyle(fontSize: 20),
                 ),
               ),
             ),
             const SizedBox(height: 30),
           ],
+        ),
         ),
       ),
     );

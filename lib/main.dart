@@ -1,21 +1,71 @@
-
 import 'package:flutter/material.dart';
-import 'pages/survey_page.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
-void main() {
-  runApp(const NoSmokeApp());
+import 'core/app_theme.dart';
+import 'pages/splash_page.dart';
+import 'services/language_service.dart';
+import 'services/notification_service.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.initialize(navigatorKey: navigatorKey);
+  final locale = await LanguageService.loadSelectedLocale();
+  runApp(NoSmokeApp(initialLocale: locale));
 }
 
-class NoSmokeApp extends StatelessWidget {
-  const NoSmokeApp({super.key});
+class NoSmokeApp extends StatefulWidget {
+  final Locale initialLocale;
+
+  const NoSmokeApp({super.key, required this.initialLocale});
+
+  static void setLocale(BuildContext context, Locale locale) {
+    final state = context.findAncestorStateOfType<_NoSmokeAppState>();
+    state?.setLocale(locale);
+  }
+
+  @override
+  State<NoSmokeApp> createState() => _NoSmokeAppState();
+}
+
+class _NoSmokeAppState extends State<NoSmokeApp> {
+  late Locale _locale;
+
+  @override
+  void initState() {
+    super.initState();
+    _locale = widget.initialLocale;
+  }
+
+  void setLocale(Locale locale) {
+    setState(() {
+      _locale = locale;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      navigatorKey: navigatorKey,
       title: 'No Smoke',
-      theme: ThemeData.dark(),
-      home: const SurveyPage(),
+      theme: AppTheme.darkTheme,
+      locale: _locale,
+      supportedLocales: const [
+        Locale('tr'),
+        Locale('en'),
+        Locale('de'),
+        Locale('ar'),
+        Locale('fr'),
+        Locale('es'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      home: const SplashPage(),
     );
   }
 }

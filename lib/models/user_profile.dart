@@ -4,7 +4,7 @@ class UserProfile {
   final int age;
   final String gender;
 
-  final int cigarettesPerDay;
+  final String packsPerDay;
   final int firstCigaretteMinutes;
   final int smokeFreeMinutes;
 
@@ -34,7 +34,7 @@ class UserProfile {
     required this.name,
     required this.age,
     required this.gender,
-    required this.cigarettesPerDay,
+    required this.packsPerDay,
     required this.firstCigaretteMinutes,
     required this.smokeFreeMinutes,
     required this.smokingYears,
