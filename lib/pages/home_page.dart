@@ -32,6 +32,7 @@ class _HomePageState extends State<HomePage> {
   final StorageService _storageService = StorageService();
   final Map<String, String> _taskStates = {};
   final Map<String, Timer> _taskFollowUpTimers = {};
+  final Set<String> _notifiedTaskTitles = <String>{};
   StreamSubscription<Map<String, String>>? _taskActionSubscription;
   List<Map<String, dynamic>> _pendingFollowUps = const [];
   bool _registrationCompleted = false;
@@ -292,6 +293,29 @@ class _HomePageState extends State<HomePage> {
 
     if (widget.autoCompleteRegistrationOnLoad && !_registrationCompleted && !_isCompletingRegistration) {
       unawaited(_completeRegistration());
+    }
+
+    if (_registrationCompleted) {
+      unawaited(_notifyNewTasks());
+    }
+  }
+
+  Future<void> _notifyNewTasks() async {
+    if (_todaysTasks.isEmpty) {
+      return;
+    }
+    for (final task in _todaysTasks) {
+      if (_notifiedTaskTitles.contains(task)) {
+        continue;
+      }
+      if ((_taskStates[task] ?? 'new') != 'new') {
+        continue;
+      }
+      await NotificationService.showFirstTaskTriggerNotification(
+        taskTitle: context.t('todaysTasks'),
+        taskDescription: task,
+      );
+      _notifiedTaskTitles.add(task);
     }
   }
 

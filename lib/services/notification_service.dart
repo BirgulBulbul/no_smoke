@@ -32,6 +32,7 @@ class NotificationService {
 
   static Future<void> initialize({GlobalKey<NavigatorState>? navigatorKey}) async {
     _navigatorKey = navigatorKey;
+    final code = await LanguageService.loadSelectedLanguageCode();
     tz.initializeTimeZones();
     final initSettings = InitializationSettings(
       android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -42,12 +43,12 @@ class NotificationService {
             actions: <DarwinNotificationAction>[
               DarwinNotificationAction.plain(
                 _actionTaskDone,
-                'Tamam',
+                _text(code, 'taskActionDone'),
                 options: <DarwinNotificationActionOption>{DarwinNotificationActionOption.foreground},
               ),
               DarwinNotificationAction.plain(
                 _actionTaskNotNow,
-                'Şimdi Uygun Değil',
+                _text(code, 'taskActionNotNow'),
                 options: <DarwinNotificationActionOption>{DarwinNotificationActionOption.foreground},
               ),
             ],
@@ -57,12 +58,12 @@ class NotificationService {
             actions: <DarwinNotificationAction>[
               DarwinNotificationAction.plain(
                 _actionSmokedYes,
-                'Evet',
+                _text(code, 'yes'),
                 options: <DarwinNotificationActionOption>{DarwinNotificationActionOption.foreground},
               ),
               DarwinNotificationAction.plain(
                 _actionSmokedNo,
-                'Hayır',
+                _text(code, 'no'),
                 options: <DarwinNotificationActionOption>{DarwinNotificationActionOption.foreground},
               ),
             ],
@@ -238,8 +239,9 @@ class NotificationService {
           'Nefes testi hatırlatıcı',
           importance: Importance.max,
           priority: Priority.high,
+          playSound: true,
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: DarwinNotificationDetails(presentSound: true),
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.time,
@@ -275,6 +277,7 @@ class NotificationService {
           'Görev takip hatırlatıcı',
           importance: Importance.max,
           priority: Priority.high,
+          playSound: true,
           actions: <AndroidNotificationAction>[
             const AndroidNotificationAction(
               _actionSmokedYes,
@@ -292,6 +295,7 @@ class NotificationService {
         ),
         iOS: const DarwinNotificationDetails(
           categoryIdentifier: _categoryTaskFollowUp,
+          presentSound: true,
         ),
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -321,8 +325,9 @@ class NotificationService {
           'Task timer start',
           importance: Importance.max,
           priority: Priority.high,
+          playSound: true,
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: DarwinNotificationDetails(presentSound: true),
       ),
     );
   }
@@ -338,12 +343,16 @@ class NotificationService {
 
   static String _text(String code, String key) {
     const tr = <String, String>{
+      'yes': 'Evet',
+      'no': 'Hayır',
+      'taskActionDone': 'Tamam',
+      'taskActionNotNow': 'Şimdi Uygun Değil',
       'breathReminderTitle': 'Nefes Testi',
       'breathReminderBody': 'Günlük nefes testi zamanı geldi.',
       'breathReminderDriving': 'Sürüşte güvenliğiniz için hatırlatma kısa süre ertelendi.',
       'taskFollowUpTitlePush': 'Görev Takibi',
-      'taskFollowUpQuestion': 'Bu süre boyunca sigara içtiniz mi?',
-      'taskFollowUpQuestionDriving': 'Sürüş sonrası cevaplayın: Bu süre boyunca sigara içtiniz mi?',
+      'taskFollowUpQuestion': 'Bu görev sırasında sigara içtiniz mi?',
+      'taskFollowUpQuestionDriving': 'Sürüş sonrası cevaplayın: Bu görev sırasında sigara içtiniz mi?',
       'taskTimerStartedTitle': 'İlk Görev',
       'taskTimerStartedBody': '15 dakikalık görev başladı:',
       'taskTimerDuration': 'Sayaç',
@@ -351,12 +360,16 @@ class NotificationService {
     };
 
     const en = <String, String>{
+      'yes': 'Yes',
+      'no': 'No',
+      'taskActionDone': 'Complete',
+      'taskActionNotNow': 'Not now',
       'breathReminderTitle': 'Breath Test',
       'breathReminderBody': 'Time for your daily breath test.',
       'breathReminderDriving': 'Reminder delayed briefly for driving safety.',
       'taskFollowUpTitlePush': 'Task Follow-up',
-      'taskFollowUpQuestion': 'Did you smoke during this period?',
-      'taskFollowUpQuestionDriving': 'Answer after driving: Did you smoke during this period?',
+      'taskFollowUpQuestion': 'Did you smoke during this task?',
+      'taskFollowUpQuestionDriving': 'Answer after driving: Did you smoke during this task?',
       'taskTimerStartedTitle': 'First Task',
       'taskTimerStartedBody': 'Your 15-minute task has started:',
       'taskTimerDuration': 'Timer',

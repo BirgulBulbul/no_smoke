@@ -181,6 +181,17 @@ class _BreathTestPageState extends State<BreathTestPage> {
       return;
     }
 
+    late final String baseRiskLevel;
+    if (baseRiskScore >= 80) {
+      baseRiskLevel = 'KRİTİK';
+    } else if (baseRiskScore >= 60) {
+      baseRiskLevel = 'YÜKSEK';
+    } else if (baseRiskScore >= 40) {
+      baseRiskLevel = 'ORTA';
+    } else {
+      baseRiskLevel = 'DÜŞÜK';
+    }
+
     if (widget.askWeeklySurveyOnComplete) {
       final wantsWeeklySurvey = await showDialog<bool>(
         context: context,
@@ -218,6 +229,21 @@ class _BreathTestPageState extends State<BreathTestPage> {
         );
         return;
       }
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => RiskResultPage(
+            name: widget.name,
+            riskScore: baseRiskScore,
+            riskLevel: baseRiskLevel,
+            packsPerDay: widget.packsPerDay,
+            exhaleTestSeconds: _test1Seconds,
+            inhaleTestSeconds: _test2Seconds,
+          ),
+        ),
+      );
+      return;
     }
 
     Navigator.pushReplacement(

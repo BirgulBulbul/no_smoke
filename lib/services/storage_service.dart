@@ -806,7 +806,7 @@ class StorageService {
       consecutiveTrend: consecutiveTrend,
       riskyTriggers: riskyTriggers,
       riskyHours: riskyHours,
-    ) + profileAdjustment)
+    ) + profileAdjustment + _taskOutcomeRiskAdjustment(taskHistory))
         .clamp(0, 100);
 
     final isFirstProfile =
@@ -870,6 +870,21 @@ class StorageService {
     await clearBehaviorDirty();
 
     return dashboard;
+  }
+
+  int _taskOutcomeRiskAdjustment(List<TaskHistory> taskHistory) {
+    if (taskHistory.isEmpty) {
+      return 0;
+    }
+
+    final recent = taskHistory.length > 5
+        ? taskHistory.sublist(taskHistory.length - 5)
+        : taskHistory;
+    var adjustment = 0;
+    for (final item in recent) {
+      adjustment += item.completed ? -2 : 3;
+    }
+    return adjustment.clamp(-6, 12);
   }
 
   Future<void> clearAllData() async {

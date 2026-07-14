@@ -9,7 +9,6 @@ import '../services/language_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/no_smoke_logo.dart';
 import 'breath_test_page.dart';
-import 'home_page.dart';
 import 'language_selection_page.dart';
 import 'survey_page.dart';
 
@@ -25,12 +24,6 @@ class _SplashPageState extends State<SplashPage> {
   void initState() {
     super.initState();
     Timer(const Duration(milliseconds: 1800), _goNext);
-  }
-
-  bool _isSameDay(DateTime first, DateTime second) {
-    return first.year == second.year &&
-        first.month == second.month &&
-        first.day == second.day;
   }
 
   Map<String, dynamic> _resolveHomeSeed(List<SurveyRecord> records) {
@@ -108,37 +101,14 @@ class _SplashPageState extends State<SplashPage> {
     }
 
     final seed = _resolveHomeSeed(records);
-    SurveyRecord? latestBreath;
-    for (final record in records.reversed) {
-      if (record.type == 'breath_test') {
-        latestBreath = record;
-        break;
-      }
-    }
-    final breathDoneToday = latestBreath != null && _isSameDay(latestBreath.completedAt, DateTime.now());
-
-    if (!breathDoneToday) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => BreathTestPage(
-            name: seed['name'] as String,
-            packsPerDay: seed['packsPerDay'] as String,
-            navigateToHomeOnComplete: true,
-            askWeeklySurveyOnComplete: true,
-          ),
-        ),
-      );
-      return;
-    }
-
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => HomePage(
+        builder: (_) => BreathTestPage(
           name: seed['name'] as String,
-          riskScore: seed['riskScore'] as int,
-          riskLevel: seed['riskLevel'] as String,
+          packsPerDay: seed['packsPerDay'] as String,
+          navigateToHomeOnComplete: true,
+          askWeeklySurveyOnComplete: true,
         ),
       ),
     );

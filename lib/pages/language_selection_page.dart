@@ -7,7 +7,6 @@ import '../services/language_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/no_smoke_logo.dart';
 import 'breath_test_page.dart';
-import 'home_page.dart';
 import 'survey_page.dart';
 
 class LanguageSelectionPage extends StatefulWidget {
@@ -19,12 +18,6 @@ class LanguageSelectionPage extends StatefulWidget {
 
 class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
   String _selectedCode = 'tr';
-
-  bool _isSameDay(DateTime first, DateTime second) {
-    return first.year == second.year &&
-        first.month == second.month &&
-        first.day == second.day;
-  }
 
   Map<String, dynamic> _resolveHomeSeed(List<SurveyRecord> records) {
     String name = 'User';
@@ -96,37 +89,14 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
     }
 
     final seed = _resolveHomeSeed(records);
-    SurveyRecord? latestBreath;
-    for (final record in records.reversed) {
-      if (record.type == 'breath_test') {
-        latestBreath = record;
-        break;
-      }
-    }
-    final breathDoneToday = latestBreath != null && _isSameDay(latestBreath.completedAt, DateTime.now());
-
-    if (!breathDoneToday) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => BreathTestPage(
-            name: seed['name'] as String,
-            packsPerDay: seed['packsPerDay'] as String,
-            navigateToHomeOnComplete: true,
-            askWeeklySurveyOnComplete: true,
-          ),
-        ),
-      );
-      return;
-    }
-
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => HomePage(
+        builder: (_) => BreathTestPage(
           name: seed['name'] as String,
-          riskScore: seed['riskScore'] as int,
-          riskLevel: seed['riskLevel'] as String,
+          packsPerDay: seed['packsPerDay'] as String,
+          navigateToHomeOnComplete: true,
+          askWeeklySurveyOnComplete: true,
         ),
       ),
     );
