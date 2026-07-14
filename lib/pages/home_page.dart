@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/app_texts.dart';
+import '../models/survey_record.dart';
 import '../models/user_profile_snapshot.dart';
 import '../pages/task_follow_up_page.dart';
 import '../services/notification_service.dart';
@@ -13,12 +14,14 @@ class HomePage extends StatefulWidget {
   final String name;
   final int riskScore;
   final String riskLevel;
+  final bool autoCompleteRegistrationOnLoad;
 
   const HomePage({
     super.key,
     required this.name,
     required this.riskScore,
     required this.riskLevel,
+    this.autoCompleteRegistrationOnLoad = false,
   });
 
   @override
@@ -29,6 +32,7 @@ class _HomePageState extends State<HomePage> {
   final StorageService _storageService = StorageService();
   final Map<String, String> _taskStates = {};
   final Map<String, Timer> _taskFollowUpTimers = {};
+  StreamSubscription<Map<String, String>>? _taskActionSubscription;
   List<Map<String, dynamic>> _pendingFollowUps = const [];
   bool _registrationCompleted = false;
   bool _isCompletingRegistration = false;
@@ -60,11 +64,14 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _taskActionSubscription =
+        NotificationService.taskActionStream.listen(_handleTaskNotificationAction);
     _loadHomeMetrics();
   }
 
   @override
   void dispose() {
+    _taskActionSubscription?.cancel();
     for (final timer in _taskFollowUpTimers.values) {
       timer.cancel();
     }
@@ -170,6 +177,67 @@ class _HomePageState extends State<HomePage> {
     await _restorePendingFollowUps();
   }
 
+  Future<void> _handleTaskNotificationAction(Map<String, String> event) async {
+    final taskTitle = event['taskTitle']?.trim() ?? '';
+    final actionId = event['actionId']?.trim() ?? '';
+    if (taskTitle.isEmpty || actionId.isEmpty) {
+      return;
+    }
+
+    if (actionId == 'task_done') {
+      final now = DateTime.now();
+      final delay = _resolveInitialTaskDelay(taskTitle);
+      final followUpAt = now.add(delay);
+      await _storageService.saveTaskResult(
+        taskTitle: taskTitle,
+        taskResult: 'started',
+        completedAt: now,
+      );
+      await _storageService.saveTaskFollowUp(taskTitle: taskTitle, scheduledAt: followUpAt);
+      await NotificationService.scheduleTaskFollowUpReminder(taskTitle: taskTitle, delay: delay);
+      _scheduleLocalFollowUp(taskTitle, followUpAt);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _taskStates[taskTitle] = 'deferred';
+      });
+      return;
+    }
+
+    if (actionId == 'task_not_now') {
+      final delay = const Duration(minutes: 10);
+      final followUpAt = DateTime.now().add(delay);
+      await _storageService.saveTaskFollowUp(taskTitle: taskTitle, scheduledAt: followUpAt);
+      await NotificationService.scheduleFirstTaskTriggerNotification(
+        taskDescription: taskTitle,
+        delay: delay,
+      );
+      _scheduleLocalFollowUp(taskTitle, followUpAt);
+      return;
+    }
+
+    if (actionId == 'smoked_yes' || actionId == 'smoked_no') {
+      final success = actionId == 'smoked_no';
+      await _storageService.saveTaskResult(
+        taskTitle: taskTitle,
+        taskResult: success ? 'success' : 'failed',
+        completedAt: DateTime.now(),
+      );
+      await _storageService.resolveTaskFollowUpByTitle(taskTitle);
+      _taskFollowUpTimers[taskTitle]?.cancel();
+      _taskFollowUpTimers.remove(taskTitle);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _taskStates[taskTitle] = success ? 'completed' : 'failed';
+      });
+      await _loadHomeMetrics();
+      await _restorePendingFollowUps();
+    }
+  }
+
   Future<void> _loadHomeMetrics() async {
     final registrationCompleted = await _storageService.loadInitialRegistrationCompleted();
     final lastDate = await _storageService.loadLastSurveyDate();
@@ -221,6 +289,10 @@ class _HomePageState extends State<HomePage> {
       }
       _pendingFollowUps = pendingFollowUps;
     });
+
+    if (widget.autoCompleteRegistrationOnLoad && !_registrationCompleted && !_isCompletingRegistration) {
+      unawaited(_completeRegistration());
+    }
   }
 
   Duration _resolveInitialTaskDelay(String taskTitle) {
@@ -254,12 +326,26 @@ class _HomePageState extends State<HomePage> {
     final triggerMap = await _storageService.loadTriggerMapByRecordId();
     final contextMap = await _storageService.loadSurveyContextByRecordId();
 
-    final latestSurvey = records.reversed.firstWhere(
-      (record) => record.type == 'initial' || record.type == 'weekly',
-    );
-    final latestBreath = records.reversed.firstWhere(
-      (record) => record.type == 'breath_test',
-    );
+    SurveyRecord? latestSurvey;
+    SurveyRecord? latestBreath;
+    for (final record in records.reversed) {
+      if (latestSurvey == null && (record.type == 'initial' || record.type == 'weekly')) {
+        latestSurvey = record;
+      }
+      if (latestBreath == null && record.type == 'breath_test') {
+        latestBreath = record;
+      }
+      if (latestSurvey != null && latestBreath != null) {
+        break;
+      }
+    }
+
+    if (latestSurvey == null) {
+      throw StateError('Initial/weekly survey record not found while creating profile snapshot.');
+    }
+    if (latestBreath == null) {
+      throw StateError('Breath test record not found while creating profile snapshot.');
+    }
 
     final latestContext = contextMap[latestSurvey.id];
     final healthConditions =
@@ -323,26 +409,26 @@ class _HomePageState extends State<HomePage> {
         debugPrint('[CompleteRegistration] Creating first task: $firstTask');
         final createdAt = DateTime.now();
         final followUpDelay = _resolveInitialTaskDelay(firstTask);
-        final followUpAt = createdAt.add(followUpDelay);
 
         await _storageService.saveTaskResult(
           taskTitle: firstTask,
           taskResult: 'created',
           completedAt: createdAt,
         );
-        await _storageService.saveTaskFollowUp(
-          taskTitle: firstTask,
-          scheduledAt: followUpAt,
+        await NotificationService.showFirstTaskTriggerNotification(
+          taskTitle: 'İlk Görev',
+          taskDescription: firstTask,
         );
-        await NotificationService.scheduleTaskFollowUpReminder(
-          taskTitle: firstTask,
+        // If user does not tap notification, start flow automatically after delay.
+        await NotificationService.scheduleFirstTaskTriggerNotification(
+          taskDescription: firstTask,
           delay: followUpDelay,
         );
-        _scheduleLocalFollowUp(firstTask, followUpAt);
       }
 
       debugPrint('[CompleteRegistration] Saving completion flag');
       await _storageService.saveInitialRegistrationCompleted(true);
+      await _storageService.saveIsProfileCompleted(true);
       debugPrint('[CompleteRegistration] Refreshing Home metrics');
       await _loadHomeMetrics();
 

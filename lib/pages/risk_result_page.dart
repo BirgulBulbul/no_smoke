@@ -5,7 +5,7 @@ import '../models/survey_record.dart';
 import '../models/user_behavior_profile.dart';
 import '../models/user_profile_snapshot.dart';
 import '../services/storage_service.dart';
-import 'survey_review_page.dart';
+import 'home_page.dart';
 
 class RiskResultPage extends StatelessWidget {
   final String name;
@@ -238,68 +238,85 @@ class RiskResultPage extends StatelessWidget {
               height: 60,
               child: ElevatedButton(
                 onPressed: () async {
-                  final storage = StorageService();
-                  final breathTitle = context.t('breathTestRecordTitle');
-                  final adjustedRiskCritical = context.t('riskCritical');
-                  final adjustedRiskHigh = context.t('riskHigh');
-                  final adjustedRiskMedium = context.t('riskMedium');
-                  final adjustedRiskLow = context.t('riskLow');
-                  final adjustedRiskScore = await storage.calculateAdjustedRiskScore(
-                    baseScore: riskScore,
-                    exhaleSeconds: exhaleTestSeconds,
-                    inhaleSeconds: inhaleTestSeconds,
-                  );
-                  if (!context.mounted) return;
-                  final adjustedRiskLevel = adjustedRiskScore >= 80
-                      ? adjustedRiskCritical
-                      : adjustedRiskScore >= 60
-                        ? adjustedRiskHigh
-                          : adjustedRiskScore >= 40
-                          ? adjustedRiskMedium
-                          : adjustedRiskLow;
-                  final currentRecord = SurveyRecord(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    completedAt: DateTime.now(),
-                    type: 'breath_test',
-                    title: breathTitle,
-                    name: name,
-                    packsPerDay: packsPerDay,
-                    exhaleTestSeconds: exhaleTestSeconds,
-                    inhaleTestSeconds: inhaleTestSeconds,
-                    riskScore: adjustedRiskScore,
-                    riskLevel: adjustedRiskLevel,
-                  );
-                  final previousRecords = await storage.loadSurveyHistory();
-                  await storage.saveSurveyRecord(currentRecord);
-                  await storage.saveUserProfileSnapshot(
-                    UserProfileSnapshot(
-                      id: 'profile_${currentRecord.id}',
-                      createdAt: currentRecord.completedAt,
-                      riskScore: adjustedRiskScore,
+                  try {
+                    final storage = StorageService();
+                    final breathTitle = context.t('breathTestRecordTitle');
+                    final adjustedRiskCritical = context.t('riskCritical');
+                    final adjustedRiskHigh = context.t('riskHigh');
+                    final adjustedRiskMedium = context.t('riskMedium');
+                    final adjustedRiskLow = context.t('riskLow');
+                    final adjustedRiskScore = await storage.calculateAdjustedRiskScore(
+                      baseScore: riskScore,
+                      exhaleSeconds: exhaleTestSeconds,
+                      inhaleSeconds: inhaleTestSeconds,
+                    );
+                    if (!context.mounted) return;
+                    final adjustedRiskLevel = adjustedRiskScore >= 80
+                        ? adjustedRiskCritical
+                        : adjustedRiskScore >= 60
+                            ? adjustedRiskHigh
+                            : adjustedRiskScore >= 40
+                                ? adjustedRiskMedium
+                                : adjustedRiskLow;
+                    final currentRecord = SurveyRecord(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      completedAt: DateTime.now(),
+                      type: 'breath_test',
+                      title: breathTitle,
+                      name: name,
                       packsPerDay: packsPerDay,
-                      firstCigaretteRange: 'unknown',
-                      smokeFreeRange: 'unknown',
-                      consecutiveSmokingHabit: currentRecord.consecutiveSmokingHabit ?? 'Hayır',
-                      consecutiveSmokingCount: currentRecord.consecutiveSmokingCount,
-                      triggers: const [],
-                      healthConditions: const [],
-                      profession: 'Belirtilmedi',
-                      sleepTime: '21:00',
-                      wakeTime: '07:00',
-                      latestExhaleSeconds: exhaleTestSeconds,
-                      latestInhaleSeconds: inhaleTestSeconds,
-                    ),
-                  );
-                  if (!context.mounted) return;
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SurveyReviewPage(
-                        currentRecord: currentRecord,
-                        previousRecord: previousRecords.isEmpty ? null : previousRecords.last,
+                      exhaleTestSeconds: exhaleTestSeconds,
+                      inhaleTestSeconds: inhaleTestSeconds,
+                      riskScore: adjustedRiskScore,
+                      riskLevel: adjustedRiskLevel,
+                    );
+
+                    await storage.saveSurveyRecord(currentRecord);
+                    await storage.saveUserProfileSnapshot(
+                      UserProfileSnapshot(
+                        id: 'profile_${currentRecord.id}',
+                        createdAt: currentRecord.completedAt,
+                        riskScore: adjustedRiskScore,
+                        packsPerDay: packsPerDay,
+                        firstCigaretteRange: 'unknown',
+                        smokeFreeRange: 'unknown',
+                        consecutiveSmokingHabit: currentRecord.consecutiveSmokingHabit ?? 'Hayır',
+                        consecutiveSmokingCount: currentRecord.consecutiveSmokingCount,
+                        triggers: const [],
+                        healthConditions: const [],
+                        profession: 'Belirtilmedi',
+                        sleepTime: '21:00',
+                        wakeTime: '07:00',
+                        latestExhaleSeconds: exhaleTestSeconds,
+                        latestInhaleSeconds: inhaleTestSeconds,
                       ),
-                    ),
-                  );
+                    );
+
+                    if (!context.mounted) return;
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => HomePage(
+                          name: name,
+                          riskScore: adjustedRiskScore,
+                          riskLevel: adjustedRiskLevel,
+                          autoCompleteRegistrationOnLoad: true,
+                        ),
+                      ),
+                      (route) => false,
+                    );
+                  } catch (error, stackTrace) {
+                    debugPrint('[RiskResultPage] Failed to save result/continue: $error');
+                    debugPrintStack(stackTrace: stackTrace);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(
+                        const SnackBar(
+                          content: Text('Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.'),
+                        ),
+                      );
+                  }
                 },
                 child: Text(
                   context.t('continue'),

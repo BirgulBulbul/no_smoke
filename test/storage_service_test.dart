@@ -137,4 +137,15 @@ void main() {
 
     expect(adjustedScore, 85);
   });
+
+  test('persists isProfileCompleted through registration completion flag', () async {
+    final storage = StorageService();
+
+    expect(await storage.loadIsProfileCompleted(), isFalse);
+
+    await storage.saveInitialRegistrationCompleted(true);
+
+    expect(await storage.loadIsProfileCompleted(), isTrue);
+    expect(await storage.loadInitialRegistrationCompleted(), isTrue);
+  });
 }

@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:no_smoke/pages/breath_test_page.dart';
+import 'package:no_smoke/pages/home_page.dart';
+import 'package:no_smoke/pages/risk_result_page.dart';
 import 'package:no_smoke/pages/survey_page.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -50,6 +52,39 @@ void main() {
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
+  });
+
+  testWidgets('RiskResultPage continues directly to HomePage in initial setup',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        locale: Locale('tr'),
+        supportedLocales: [Locale('tr'), Locale('en')],
+        localizationsDelegates: [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: RiskResultPage(
+          name: 'Ada',
+          riskScore: 40,
+          riskLevel: 'ORTA',
+          packsPerDay: '1 paket',
+          exhaleTestSeconds: 8,
+          inhaleTestSeconds: 10,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(ElevatedButton).last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byType(HomePage), findsOneWidget);
+    expect(find.text('Tüm geçmiş anketleri gör'), findsNothing);
+    expect(find.text('Ana sayfaya dön'), findsNothing);
   });
 
   testWidgets('SurveyPage context can push BreathTestPage via Navigator.push',

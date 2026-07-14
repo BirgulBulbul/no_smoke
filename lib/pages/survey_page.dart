@@ -153,12 +153,14 @@ class _SurveyPageState extends State<SurveyPage> {
 
   Future<void> _saveInitialSurveyRecord() async {
     final initialTitle = context.t('initialRecordTitle');
-    await _storageService.saveSleepTime(sleepTime);
-    await NotificationService.scheduleDailyBreathReminder(sleepTime: sleepTime);
-
     final recordId = DateTime.now().millisecondsSinceEpoch.toString();
     final selectedTriggers = _selectedTriggerLabels();
     final selectedHealth = _selectedHealthConditions();
+
+    debugPrint(
+      '[SurveyPage] save start: recordId=$recordId, name=${nameController.text.trim()}, '
+      'profession=${profession ?? 'null'}, workStart=${workStartTime ?? 'null'}, workEnd=${workEndTime ?? 'null'}',
+    );
 
     final record = SurveyRecord(
       id: recordId,
@@ -174,43 +176,81 @@ class _SurveyPageState extends State<SurveyPage> {
       consecutiveSmokingHabit: consecutiveSmokingHabit,
       consecutiveSmokingCount: consecutiveSmokingHabit == 'Evet' ? consecutiveSmokingCount : null,
     );
-    await _storageService.saveSurveyRecord(record);
 
-    await _storageService.saveSurveyDetail(
-      recordId: recordId,
-      triggers: selectedTriggers,
-      healthConditions: selectedHealth,
-      firstCigaretteRange: firstCigaretteRange,
-      smokeFreeRange: smokeFreeRange,
-      profession: profession,
-      sleepTime: sleepTime,
-      wakeTime: wakeTime,
-      stressLevel: stressLevel,
-      quitReason: quitReason,
-      workStart: workStartTime,
-      workEnd: workEndTime,
-      workplaceSmokingRule: workplaceSmokingRule,
-    );
+    try {
+      await _storageService.saveSurveyRecord(record);
+      debugPrint('[SurveyPage] saveSurveyRecord ok: $recordId');
+    } catch (error, stackTrace) {
+      debugPrint('[SurveyPage] saveSurveyRecord failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
 
-    await _storageService.saveUserProfileSnapshot(
-      UserProfileSnapshot(
-        id: 'profile_$recordId',
-        createdAt: DateTime.now(),
-        riskScore: 0,
-        packsPerDay: _resolvedPacksPerDay,
-        firstCigaretteRange: firstCigaretteRange,
-        smokeFreeRange: smokeFreeRange,
-        consecutiveSmokingHabit: consecutiveSmokingHabit ?? 'Hayır',
-        consecutiveSmokingCount: consecutiveSmokingCount,
+    try {
+      await _storageService.saveSurveyDetail(
+        recordId: recordId,
         triggers: selectedTriggers,
         healthConditions: selectedHealth,
-        profession: profession ?? 'Belirtilmedi',
+        firstCigaretteRange: firstCigaretteRange,
+        smokeFreeRange: smokeFreeRange,
+        profession: profession,
         sleepTime: sleepTime,
         wakeTime: wakeTime,
-        latestExhaleSeconds: 0,
-        latestInhaleSeconds: 0,
-      ),
-    );
+        stressLevel: stressLevel,
+        quitReason: quitReason,
+        workStart: workStartTime,
+        workEnd: workEndTime,
+        workplaceSmokingRule: workplaceSmokingRule,
+      );
+      debugPrint('[SurveyPage] saveSurveyDetail ok: $recordId');
+    } catch (error, stackTrace) {
+      debugPrint('[SurveyPage] saveSurveyDetail failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
+
+    try {
+      await _storageService.saveSleepTime(sleepTime);
+      debugPrint('[SurveyPage] saveSleepTime ok: $sleepTime');
+    } catch (error, stackTrace) {
+      debugPrint('[SurveyPage] saveSleepTime failed (non-blocking): $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    try {
+      await NotificationService.scheduleDailyBreathReminder(sleepTime: sleepTime);
+      debugPrint('[SurveyPage] scheduleDailyBreathReminder ok');
+    } catch (error, stackTrace) {
+      debugPrint('[SurveyPage] scheduleDailyBreathReminder failed (non-blocking): $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    // Profile snapshot is best-effort during onboarding save.
+    try {
+      await _storageService.saveUserProfileSnapshot(
+        UserProfileSnapshot(
+          id: 'profile_$recordId',
+          createdAt: DateTime.now(),
+          riskScore: 0,
+          packsPerDay: _resolvedPacksPerDay,
+          firstCigaretteRange: firstCigaretteRange,
+          smokeFreeRange: smokeFreeRange,
+          consecutiveSmokingHabit: consecutiveSmokingHabit ?? 'Hayır',
+          consecutiveSmokingCount: consecutiveSmokingCount,
+          triggers: selectedTriggers,
+          healthConditions: selectedHealth,
+          profession: profession ?? 'Belirtilmedi',
+          sleepTime: sleepTime,
+          wakeTime: wakeTime,
+          latestExhaleSeconds: 0,
+          latestInhaleSeconds: 0,
+        ),
+      );
+      debugPrint('[SurveyPage] saveUserProfileSnapshot ok: profile_$recordId');
+    } catch (error, stackTrace) {
+      debugPrint('[SurveyPage] saveUserProfileSnapshot failed (non-blocking): $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   String? _missingRequiredFieldMessage() {
@@ -684,11 +724,14 @@ class _SurveyPageState extends State<SurveyPage> {
 
                   try {
                     await _saveInitialSurveyRecord();
-                  } catch (_) {
+                  } catch (error, stackTrace) {
+                    debugPrint('[SurveyPage] Initial survey save failed: $error');
+                    debugPrintStack(stackTrace: stackTrace);
                     if (!mounted) return;
                     _showValidationMessage(
-                      'Kayıt sırasında bir sorun oluştu. Anket ekranından devam ediliyor.',
+                      'Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.',
                     );
+                    return;
                   }
 
                   if (!context.mounted) return;

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -24,6 +25,7 @@ class StorageService {
   static const _taskFollowUpTable = 'task_followups';
   static const _behaviorDirtyKey = 'behavior_dirty';
   static const _registrationCompletedKey = 'registration_completed';
+  static const _isProfileCompletedKey = 'isProfileCompleted';
   static const _surveyTypes = {'initial', 'weekly'};
   final BehaviorEngine _behaviorEngine = BehaviorEngine();
   Database? _database;
@@ -208,10 +210,16 @@ class StorageService {
   }
 
   Future<void> saveSurveyRecord(SurveyRecord record) async {
-    final db = await database;
-    await db.insert(_tableName, record.toJson(), conflictAlgorithm: ConflictAlgorithm.replace);
-    await updateLastSurveyDate(record.completedAt);
-    await markBehaviorDirty();
+    try {
+      final db = await database;
+      await db.insert(_tableName, record.toJson(), conflictAlgorithm: ConflictAlgorithm.replace);
+      await updateLastSurveyDate(record.completedAt);
+      await markBehaviorDirty();
+    } catch (error, stackTrace) {
+      debugPrint('[StorageService] saveSurveyRecord failed: id=${record.id}, type=${record.type}, error=$error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   Future<void> saveSurveyDetail({
@@ -229,28 +237,34 @@ class StorageService {
     String? workEnd,
     String? workplaceSmokingRule,
   }) async {
-    final db = await database;
-    await db.insert(
-      _surveyDetailsTable,
-      {
-        'recordId': recordId,
-        'triggerJson': jsonEncode(triggers),
-        'healthJson': jsonEncode(healthConditions),
-        'firstCigaretteRange': firstCigaretteRange,
-        'smokeFreeRange': smokeFreeRange,
-        'profession': profession,
-        'sleepTime': sleepTime,
-        'wakeTime': wakeTime,
-        'stressLevel': stressLevel,
-        'quitReason': quitReason,
-        'workStart': workStart,
-        'workEnd': workEnd,
-        'workplaceSmokingRule': workplaceSmokingRule,
-        'createdAt': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    await markBehaviorDirty();
+    try {
+      final db = await database;
+      await db.insert(
+        _surveyDetailsTable,
+        {
+          'recordId': recordId,
+          'triggerJson': jsonEncode(triggers),
+          'healthJson': jsonEncode(healthConditions),
+          'firstCigaretteRange': firstCigaretteRange,
+          'smokeFreeRange': smokeFreeRange,
+          'profession': profession,
+          'sleepTime': sleepTime,
+          'wakeTime': wakeTime,
+          'stressLevel': stressLevel,
+          'quitReason': quitReason,
+          'workStart': workStart,
+          'workEnd': workEnd,
+          'workplaceSmokingRule': workplaceSmokingRule,
+          'createdAt': DateTime.now().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await markBehaviorDirty();
+    } catch (error, stackTrace) {
+      debugPrint('[StorageService] saveSurveyDetail failed: recordId=$recordId, error=$error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   Future<Map<String, List<String>>> loadTriggerMapByRecordId() async {
@@ -294,28 +308,34 @@ class StorageService {
   }
 
   Future<void> saveUserProfileSnapshot(UserProfileSnapshot snapshot) async {
-    final db = await database;
-    await db.insert(
-      _profileSnapshotTable,
-      {
-        'id': snapshot.id,
-        'createdAt': snapshot.createdAt.toIso8601String(),
-        'riskScore': snapshot.riskScore,
-        'packsPerDay': snapshot.packsPerDay,
-        'firstCigaretteRange': snapshot.firstCigaretteRange,
-        'smokeFreeRange': snapshot.smokeFreeRange,
-        'consecutiveSmokingHabit': snapshot.consecutiveSmokingHabit,
-        'consecutiveSmokingCount': snapshot.consecutiveSmokingCount,
-        'triggerJson': jsonEncode(snapshot.triggers),
-        'healthJson': jsonEncode(snapshot.healthConditions),
-        'profession': snapshot.profession,
-        'sleepTime': snapshot.sleepTime,
-        'wakeTime': snapshot.wakeTime,
-        'latestExhaleSeconds': snapshot.latestExhaleSeconds,
-        'latestInhaleSeconds': snapshot.latestInhaleSeconds,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    try {
+      final db = await database;
+      await db.insert(
+        _profileSnapshotTable,
+        {
+          'id': snapshot.id,
+          'createdAt': snapshot.createdAt.toIso8601String(),
+          'riskScore': snapshot.riskScore,
+          'packsPerDay': snapshot.packsPerDay,
+          'firstCigaretteRange': snapshot.firstCigaretteRange,
+          'smokeFreeRange': snapshot.smokeFreeRange,
+          'consecutiveSmokingHabit': snapshot.consecutiveSmokingHabit,
+          'consecutiveSmokingCount': snapshot.consecutiveSmokingCount,
+          'triggerJson': jsonEncode(snapshot.triggers),
+          'healthJson': jsonEncode(snapshot.healthConditions),
+          'profession': snapshot.profession,
+          'sleepTime': snapshot.sleepTime,
+          'wakeTime': snapshot.wakeTime,
+          'latestExhaleSeconds': snapshot.latestExhaleSeconds,
+          'latestInhaleSeconds': snapshot.latestInhaleSeconds,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[StorageService] saveUserProfileSnapshot failed: id=${snapshot.id}, error=$error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   Future<void> saveLanguageSelectionHistory(String languageCode) async {
@@ -571,9 +591,24 @@ class StorageService {
 
   Future<void> saveInitialRegistrationCompleted(bool completed) async {
     await saveSetting(_registrationCompletedKey, completed ? '1' : '0');
+    await saveSetting(_isProfileCompletedKey, completed ? '1' : '0');
+  }
+
+  Future<void> saveIsProfileCompleted(bool completed) async {
+    await saveSetting(_isProfileCompletedKey, completed ? '1' : '0');
+  }
+
+  Future<bool> loadIsProfileCompleted() async {
+    final value = await loadSetting(_isProfileCompletedKey);
+    return value == '1';
   }
 
   Future<bool> loadInitialRegistrationCompleted() async {
+    final profileCompleted = await loadIsProfileCompleted();
+    if (profileCompleted) {
+      return true;
+    }
+
     final value = await loadSetting(_registrationCompletedKey);
     if (value != null) {
       return value == '1';
