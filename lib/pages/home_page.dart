@@ -7,6 +7,7 @@ import '../models/survey_record.dart';
 import '../models/user_profile_snapshot.dart';
 import '../pages/task_follow_up_page.dart';
 import '../services/notification_service.dart';
+import '../services/permission_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/no_smoke_logo.dart';
 
@@ -806,6 +807,14 @@ class _HomePageState extends State<HomePage> {
       }
 
       try {
+        final telemetryGranted =
+            await PermissionService.ensureTelemetryPermissions();
+        if (!telemetryGranted && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.t('sensorPermissionRecommended'))),
+          );
+        }
+
         final permissionGranted =
             await NotificationService.ensureNotificationPermission();
         if (!permissionGranted && mounted) {
@@ -823,10 +832,15 @@ class _HomePageState extends State<HomePage> {
 
         await NotificationService.scheduleFirstTaskTriggerNotification(
           taskDescription: firstTask,
+          delay: const Duration(seconds: 30),
+        );
+
+        await NotificationService.scheduleFirstTaskTriggerNotification(
+          taskDescription: firstTask,
           delay: followUpDelay,
         );
         debugPrint(
-          '[CompleteRegistration] first task notification shown now + scheduled (5m)',
+          '[CompleteRegistration] first task notification shown now + scheduled (30s, 5m)',
         );
       } catch (error, stackTrace) {
         debugPrint(

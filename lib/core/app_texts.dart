@@ -230,6 +230,8 @@ class AppTexts {
     'registrationCompleted': 'Kayıt tamamlandı. İlk görev hazırlandı.',
     'notificationPermissionRequired':
         'Ilk gorevlendirmeyi alabilmek icin bildirim iznini acin.',
+    'sensorPermissionRecommended':
+        'Davranis analizinin dogru calismasi icin sensor izinlerini acin.',
     'firstTaskNoSmoke15': '15 dakika sigara içmeyin.',
     'backToStart': 'Başa Dön',
     'weeklySurvey': 'Haftalık Anket',
@@ -554,6 +556,8 @@ class AppTexts {
         'Registration completed. Your first task is ready.',
     'notificationPermissionRequired':
         'Enable notification permission to receive your first assignment.',
+    'sensorPermissionRecommended':
+        'Enable sensor permissions for more accurate behavior analysis.',
     'firstTaskNoSmoke15': 'Do not smoke for 15 minutes.',
     'backToStart': 'Back to Start',
     'weeklySurvey': 'Weekly Survey',
