@@ -16,10 +16,7 @@ class ConsecutiveSmokingSection extends StatelessWidget {
     required this.onCountChanged,
   });
 
-  static const List<String> habitOptions = [
-    'Evet',
-    'Hayır',
-  ];
+  static const List<String> habitOptions = ['Evet', 'Hayır'];
 
   static const List<String> countOptions = [
     '2 adet',
@@ -73,9 +70,14 @@ class ConsecutiveSmokingSection extends StatelessWidget {
             labelText: context.t('chainSmokingAsk'),
             border: const OutlineInputBorder(),
           ),
-          hint: const Text('Lütfen seçiniz'),
+          hint: Builder(builder: (context) => Text(context.t('selectOption'))),
           items: habitOptions
-              .map((value) => DropdownMenuItem<String>(value: value, child: Text(labelForHabit(value))))
+              .map(
+                (value) => DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(labelForHabit(value)),
+                ),
+              )
               .toList(),
           onChanged: onHabitChanged,
           validator: (value) {
@@ -93,9 +95,16 @@ class ConsecutiveSmokingSection extends StatelessWidget {
               labelText: context.t('chainSmokingCountAsk'),
               border: const OutlineInputBorder(),
             ),
-            hint: const Text('Lütfen seçiniz'),
+            hint: Builder(
+              builder: (context) => Text(context.t('selectOption')),
+            ),
             items: countOptions
-                .map((value) => DropdownMenuItem<String>(value: value, child: Text(labelForCount(value))))
+                .map(
+                  (value) => DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(labelForCount(value)),
+                  ),
+                )
                 .toList(),
             onChanged: (value) => onCountChanged(value ?? '2 adet'),
             validator: (value) {

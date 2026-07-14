@@ -186,9 +186,15 @@ class StorageService {
     ''');
   }
 
-  Future<void> _ensureColumn(Database db, String columnName, String columnType) async {
+  Future<void> _ensureColumn(
+    Database db,
+    String columnName,
+    String columnType,
+  ) async {
     try {
-      await db.execute('ALTER TABLE $_tableName ADD COLUMN $columnName $columnType');
+      await db.execute(
+        'ALTER TABLE $_tableName ADD COLUMN $columnName $columnType',
+      );
     } catch (_) {
       // Column already exists on upgraded databases.
     }
@@ -197,14 +203,25 @@ class StorageService {
   Future<List<SurveyRecord>> loadSurveyHistory() async {
     final db = await database;
     final rows = await db.query(_tableName, orderBy: 'completedAt ASC');
-    return rows.map((row) => SurveyRecord.fromJson({...row, 'completedAt': row['completedAt'] as String})).toList();
+    return rows
+        .map(
+          (row) => SurveyRecord.fromJson({
+            ...row,
+            'completedAt': row['completedAt'] as String,
+          }),
+        )
+        .toList();
   }
 
   Future<void> saveSurveyHistory(List<SurveyRecord> records) async {
     final db = await database;
     final batch = db.batch();
     for (final record in records) {
-      batch.insert(_tableName, record.toJson(), conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+        _tableName,
+        record.toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
     await batch.commit(noResult: true);
   }
@@ -212,11 +229,17 @@ class StorageService {
   Future<void> saveSurveyRecord(SurveyRecord record) async {
     try {
       final db = await database;
-      await db.insert(_tableName, record.toJson(), conflictAlgorithm: ConflictAlgorithm.replace);
+      await db.insert(
+        _tableName,
+        record.toJson(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
       await updateLastSurveyDate(record.completedAt);
       await markBehaviorDirty();
     } catch (error, stackTrace) {
-      debugPrint('[StorageService] saveSurveyRecord failed: id=${record.id}, type=${record.type}, error=$error');
+      debugPrint(
+        '[StorageService] saveSurveyRecord failed: id=${record.id}, type=${record.type}, error=$error',
+      );
       debugPrintStack(stackTrace: stackTrace);
       rethrow;
     }
@@ -239,29 +262,27 @@ class StorageService {
   }) async {
     try {
       final db = await database;
-      await db.insert(
-        _surveyDetailsTable,
-        {
-          'recordId': recordId,
-          'triggerJson': jsonEncode(triggers),
-          'healthJson': jsonEncode(healthConditions),
-          'firstCigaretteRange': firstCigaretteRange,
-          'smokeFreeRange': smokeFreeRange,
-          'profession': profession,
-          'sleepTime': sleepTime,
-          'wakeTime': wakeTime,
-          'stressLevel': stressLevel,
-          'quitReason': quitReason,
-          'workStart': workStart,
-          'workEnd': workEnd,
-          'workplaceSmokingRule': workplaceSmokingRule,
-          'createdAt': DateTime.now().toIso8601String(),
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert(_surveyDetailsTable, {
+        'recordId': recordId,
+        'triggerJson': jsonEncode(triggers),
+        'healthJson': jsonEncode(healthConditions),
+        'firstCigaretteRange': firstCigaretteRange,
+        'smokeFreeRange': smokeFreeRange,
+        'profession': profession,
+        'sleepTime': sleepTime,
+        'wakeTime': wakeTime,
+        'stressLevel': stressLevel,
+        'quitReason': quitReason,
+        'workStart': workStart,
+        'workEnd': workEnd,
+        'workplaceSmokingRule': workplaceSmokingRule,
+        'createdAt': DateTime.now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
       await markBehaviorDirty();
     } catch (error, stackTrace) {
-      debugPrint('[StorageService] saveSurveyDetail failed: recordId=$recordId, error=$error');
+      debugPrint(
+        '[StorageService] saveSurveyDetail failed: recordId=$recordId, error=$error',
+      );
       debugPrintStack(stackTrace: stackTrace);
       rethrow;
     }
@@ -278,13 +299,16 @@ class StorageService {
         result[recordId] = const [];
         continue;
       }
-      final parsed = (jsonDecode(raw) as List<dynamic>).map((item) => item.toString()).toList();
+      final parsed = (jsonDecode(raw) as List<dynamic>)
+          .map((item) => item.toString())
+          .toList();
       result[recordId] = parsed;
     }
     return result;
   }
 
-  Future<Map<String, Map<String, dynamic>>> loadSurveyContextByRecordId() async {
+  Future<Map<String, Map<String, dynamic>>>
+  loadSurveyContextByRecordId() async {
     final db = await database;
     final rows = await db.query(_surveyDetailsTable);
     final result = <String, Map<String, dynamic>>{};
@@ -294,12 +318,19 @@ class StorageService {
       final healthRaw = row['healthJson'] as String?;
       final healthConditions = healthRaw == null || healthRaw.isEmpty
           ? <String>[]
-          : (jsonDecode(healthRaw) as List<dynamic>).map((item) => item.toString()).toList();
+          : (jsonDecode(healthRaw) as List<dynamic>)
+                .map((item) => item.toString())
+                .toList();
 
       result[recordId] = {
         'profession': row['profession'] as String?,
         'sleepTime': row['sleepTime'] as String?,
         'wakeTime': row['wakeTime'] as String?,
+        'workStart': row['workStart'] as String?,
+        'workEnd': row['workEnd'] as String?,
+        'workplaceSmokingRule': row['workplaceSmokingRule'] as String?,
+        'stressLevel': row['stressLevel'] as String?,
+        'quitReason': row['quitReason'] as String?,
         'healthConditions': healthConditions,
       };
     }
@@ -310,29 +341,27 @@ class StorageService {
   Future<void> saveUserProfileSnapshot(UserProfileSnapshot snapshot) async {
     try {
       final db = await database;
-      await db.insert(
-        _profileSnapshotTable,
-        {
-          'id': snapshot.id,
-          'createdAt': snapshot.createdAt.toIso8601String(),
-          'riskScore': snapshot.riskScore,
-          'packsPerDay': snapshot.packsPerDay,
-          'firstCigaretteRange': snapshot.firstCigaretteRange,
-          'smokeFreeRange': snapshot.smokeFreeRange,
-          'consecutiveSmokingHabit': snapshot.consecutiveSmokingHabit,
-          'consecutiveSmokingCount': snapshot.consecutiveSmokingCount,
-          'triggerJson': jsonEncode(snapshot.triggers),
-          'healthJson': jsonEncode(snapshot.healthConditions),
-          'profession': snapshot.profession,
-          'sleepTime': snapshot.sleepTime,
-          'wakeTime': snapshot.wakeTime,
-          'latestExhaleSeconds': snapshot.latestExhaleSeconds,
-          'latestInhaleSeconds': snapshot.latestInhaleSeconds,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert(_profileSnapshotTable, {
+        'id': snapshot.id,
+        'createdAt': snapshot.createdAt.toIso8601String(),
+        'riskScore': snapshot.riskScore,
+        'packsPerDay': snapshot.packsPerDay,
+        'firstCigaretteRange': snapshot.firstCigaretteRange,
+        'smokeFreeRange': snapshot.smokeFreeRange,
+        'consecutiveSmokingHabit': snapshot.consecutiveSmokingHabit,
+        'consecutiveSmokingCount': snapshot.consecutiveSmokingCount,
+        'triggerJson': jsonEncode(snapshot.triggers),
+        'healthJson': jsonEncode(snapshot.healthConditions),
+        'profession': snapshot.profession,
+        'sleepTime': snapshot.sleepTime,
+        'wakeTime': snapshot.wakeTime,
+        'latestExhaleSeconds': snapshot.latestExhaleSeconds,
+        'latestInhaleSeconds': snapshot.latestInhaleSeconds,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     } catch (error, stackTrace) {
-      debugPrint('[StorageService] saveUserProfileSnapshot failed: id=${snapshot.id}, error=$error');
+      debugPrint(
+        '[StorageService] saveUserProfileSnapshot failed: id=${snapshot.id}, error=$error',
+      );
       debugPrintStack(stackTrace: stackTrace);
       rethrow;
     }
@@ -341,49 +370,44 @@ class StorageService {
   Future<void> saveLanguageSelectionHistory(String languageCode) async {
     final db = await database;
     final now = DateTime.now();
-    await db.insert(
-      _languageHistoryTable,
-      {
-        'id': 'lang_${now.microsecondsSinceEpoch}',
-        'languageCode': languageCode,
-        'selectedAt': now.toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(_languageHistoryTable, {
+      'id': 'lang_${now.microsecondsSinceEpoch}',
+      'languageCode': languageCode,
+      'selectedAt': now.toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> saveSensorUsageEvent(SensorUsageEvent event) async {
     final db = await database;
-    await db.insert(
-      _sensorUsageTable,
-      {
-        'id': event.id,
-        'createdAt': event.createdAt.toIso8601String(),
-        'activityState': event.activityState,
-        'accelerometerMagnitude': event.accelerometerMagnitude,
-        'gyroscopeMagnitude': event.gyroscopeMagnitude,
-        'screenUnlockCount': event.screenUnlockCount,
-        'appUsageMinutes': event.appUsageMinutes,
-        'idleMinutes': event.idleMinutes,
-        'charging': event.charging ? 1 : 0,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(_sensorUsageTable, {
+      'id': event.id,
+      'createdAt': event.createdAt.toIso8601String(),
+      'activityState': event.activityState,
+      'accelerometerMagnitude': event.accelerometerMagnitude,
+      'gyroscopeMagnitude': event.gyroscopeMagnitude,
+      'screenUnlockCount': event.screenUnlockCount,
+      'appUsageMinutes': event.appUsageMinutes,
+      'idleMinutes': event.idleMinutes,
+      'charging': event.charging ? 1 : 0,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
     await markBehaviorDirty();
   }
 
   Future<void> saveSetting(String key, String value) async {
     final db = await database;
-    await db.insert(
-      _settingsTable,
-      {'key': key, 'value': value},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(_settingsTable, {
+      'key': key,
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<String?> loadSetting(String key) async {
     final db = await database;
-    final rows = await db.query(_settingsTable, where: 'key = ?', whereArgs: [key]);
+    final rows = await db.query(
+      _settingsTable,
+      where: 'key = ?',
+      whereArgs: [key],
+    );
     if (rows.isEmpty) {
       return null;
     }
@@ -406,7 +430,9 @@ class StorageService {
     return value == '1';
   }
 
-  Future<List<SensorUsageEvent>> loadRecentSensorUsage({int limit = 120}) async {
+  Future<List<SensorUsageEvent>> loadRecentSensorUsage({
+    int limit = 120,
+  }) async {
     final db = await database;
     final rows = await db.query(
       _sensorUsageTable,
@@ -418,7 +444,8 @@ class StorageService {
         id: row['id'] as String,
         createdAt: DateTime.parse(row['createdAt'] as String),
         activityState: row['activityState'] as String,
-        accelerometerMagnitude: (row['accelerometerMagnitude'] as num).toDouble(),
+        accelerometerMagnitude: (row['accelerometerMagnitude'] as num)
+            .toDouble(),
         gyroscopeMagnitude: (row['gyroscopeMagnitude'] as num).toDouble(),
         screenUnlockCount: (row['screenUnlockCount'] as num).toInt(),
         appUsageMinutes: (row['appUsageMinutes'] as num).toInt(),
@@ -431,10 +458,15 @@ class StorageService {
   Future<List<TaskHistory>> loadTaskHistory() async {
     final records = await loadSurveyHistory();
     return records
-        .where((record) => record.type == 'task_result' && (record.taskTitle?.isNotEmpty ?? false))
+        .where(
+          (record) =>
+              record.type == 'task_result' &&
+              (record.taskTitle?.isNotEmpty ?? false),
+        )
         .map((record) {
           final resultText = (record.taskResult ?? '').toLowerCase();
-          final completed = resultText.contains('success') ||
+          final completed =
+              resultText.contains('success') ||
               resultText.contains('basar') ||
               resultText.contains('tamam');
           return TaskHistory(
@@ -447,21 +479,55 @@ class StorageService {
         .toList();
   }
 
+  Future<Map<String, int>> loadTaskOutcomeSummary() async {
+    final taskHistory = await loadTaskHistory();
+    var successCount = 0;
+    var failureCount = 0;
+    var recentSuccessCount = 0;
+    var recentFailureCount = 0;
+
+    for (final item in taskHistory) {
+      if (item.completed) {
+        successCount += 1;
+      } else {
+        failureCount += 1;
+      }
+    }
+
+    final recent = taskHistory.length > 10
+        ? taskHistory.sublist(taskHistory.length - 10)
+        : taskHistory;
+    for (final item in recent) {
+      if (item.completed) {
+        recentSuccessCount += 1;
+      } else {
+        recentFailureCount += 1;
+      }
+    }
+
+    return {
+      'successCount': successCount,
+      'failureCount': failureCount,
+      'recentSuccessCount': recentSuccessCount,
+      'recentFailureCount': recentFailureCount,
+    };
+  }
+
   Future<void> saveBehaviorSnapshot(Map<String, dynamic> snapshot) async {
     final db = await database;
     final now = DateTime.now();
-    await db.insert(
-      _behaviorSnapshotTable,
-      {
-        'id': 'behavior_${now.microsecondsSinceEpoch}',
-        'createdAt': now.toIso8601String(),
-        'snapshotJson': jsonEncode(snapshot),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(_behaviorSnapshotTable, {
+      'id': 'behavior_${now.microsecondsSinceEpoch}',
+      'createdAt': now.toIso8601String(),
+      'snapshotJson': jsonEncode(snapshot),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  Future<void> saveTaskResult({required String taskTitle, required String taskResult, required DateTime completedAt}) async {
+  Future<void> saveTaskResult({
+    required String taskTitle,
+    required String taskResult,
+    required DateTime completedAt,
+  }) async {
     final record = SurveyRecord(
       id: 'task_${completedAt.millisecondsSinceEpoch}',
       completedAt: completedAt,
@@ -486,17 +552,13 @@ class StorageService {
   }) async {
     final db = await database;
     final now = DateTime.now();
-    await db.insert(
-      _taskFollowUpTable,
-      {
-        'id': 'followup_${now.microsecondsSinceEpoch}',
-        'taskTitle': taskTitle,
-        'scheduledAt': scheduledAt.toIso8601String(),
-        'status': 'pending',
-        'createdAt': now.toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(_taskFollowUpTable, {
+      'id': 'followup_${now.microsecondsSinceEpoch}',
+      'taskTitle': taskTitle,
+      'scheduledAt': scheduledAt.toIso8601String(),
+      'status': 'pending',
+      'createdAt': now.toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<Map<String, dynamic>>> loadPendingTaskFollowUps() async {
@@ -509,13 +571,15 @@ class StorageService {
     );
 
     return rows
-        .map((row) => {
-              'id': row['id'] as String,
-              'taskTitle': row['taskTitle'] as String,
-              'scheduledAt': DateTime.parse(row['scheduledAt'] as String),
-              'status': row['status'] as String,
-              'createdAt': DateTime.parse(row['createdAt'] as String),
-            })
+        .map(
+          (row) => {
+            'id': row['id'] as String,
+            'taskTitle': row['taskTitle'] as String,
+            'scheduledAt': DateTime.parse(row['scheduledAt'] as String),
+            'status': row['status'] as String,
+            'createdAt': DateTime.parse(row['createdAt'] as String),
+          },
+        )
         .toList();
   }
 
@@ -548,13 +612,13 @@ class StorageService {
       count: current.consecutiveSmokingCount,
     );
     final previousLabel = previous == null
-      ? 'firstEvaluation'
+        ? 'firstEvaluation'
         : _behaviorEngine.summarizeConsecutiveSmoking(
             habit: previous.consecutiveSmokingHabit,
             count: previous.consecutiveSmokingCount,
           );
     final trend = previous == null
-      ? 'noRecordYet'
+        ? 'noRecordYet'
         : _behaviorEngine.evaluateConsecutiveSmokingTrend(
             previousHabit: previous.consecutiveSmokingHabit,
             previousCount: previous.consecutiveSmokingCount,
@@ -624,14 +688,19 @@ class StorageService {
 
   Future<BehaviorDashboard?> loadLatestBehaviorSnapshot() async {
     final db = await database;
-    final rows = await db.query(_behaviorSnapshotTable, orderBy: 'createdAt DESC', limit: 1);
+    final rows = await db.query(
+      _behaviorSnapshotTable,
+      orderBy: 'createdAt DESC',
+      limit: 1,
+    );
     if (rows.isEmpty) {
       return null;
     }
 
     final raw = rows.first['snapshotJson'] as String;
     final data = jsonDecode(raw) as Map<String, dynamic>;
-    final planData = data['plan'] as Map<String, dynamic>? ?? <String, dynamic>{};
+    final planData =
+        data['plan'] as Map<String, dynamic>? ?? <String, dynamic>{};
 
     return BehaviorDashboard(
       riskScore: (data['riskScore'] as num?)?.toInt() ?? 0,
@@ -646,15 +715,22 @@ class StorageService {
       todaysTasks: (data['todaysTasks'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),
-      predictedRiskWindow: data['predictedRiskWindow']?.toString() ?? '20:00-22:00',
-      predictionConfidence: (data['predictionConfidence'] as num?)?.toInt() ?? 50,
+      predictedRiskWindow:
+          data['predictedRiskWindow']?.toString() ?? '20:00-22:00',
+      predictionConfidence:
+          (data['predictionConfidence'] as num?)?.toInt() ?? 50,
       predictedTrigger: data['predictedTrigger']?.toString() ?? 'Stres',
       plan: AdaptivePlan(
-        generatedAt: DateTime.tryParse(planData['generatedAt']?.toString() ?? '') ?? DateTime.now(),
+        generatedAt:
+            DateTime.tryParse(planData['generatedAt']?.toString() ?? '') ??
+            DateTime.now(),
         targetDays: (planData['targetDays'] as num?)?.toInt() ?? 180,
         currentWeek: (planData['currentWeek'] as num?)?.toInt() ?? 1,
+        currentDay: (planData['currentDay'] as num?)?.toInt() ?? 1,
+        daysRemaining: (planData['daysRemaining'] as num?)?.toInt() ?? 179,
         weeklyRiskTarget: (planData['weeklyRiskTarget'] as num?)?.toInt() ?? 50,
         difficulty: planData['difficulty']?.toString() ?? 'medium',
+        cadenceLevel: planData['cadenceLevel']?.toString() ?? 'one_day',
         focusAreas: (planData['focusAreas'] as List<dynamic>? ?? const [])
             .map((item) => item.toString())
             .toList(),
@@ -664,22 +740,47 @@ class StorageService {
 
   Future<Map<String, double>> loadBreathMetrics() async {
     final records = await loadSurveyHistory();
-    final breathRecords = records.where((record) => record.type == 'breath_test').toList();
+    final breathRecords = records
+        .where((record) => record.type == 'breath_test')
+        .toList();
 
     if (breathRecords.isEmpty) {
       return {'dailyAverage': 0, 'weeklyAverage': 0, 'monthlyAverage': 0};
     }
 
     final now = DateTime.now();
-    final todayRecords = breathRecords.where((record) => record.completedAt.year == now.year && record.completedAt.month == now.month && record.completedAt.day == now.day).toList();
-    final weekRecords = breathRecords.where((record) => record.completedAt.isAfter(now.subtract(const Duration(days: 7)))).toList();
-    final monthRecords = breathRecords.where((record) => record.completedAt.isAfter(now.subtract(const Duration(days: 30)))).toList();
+    final todayRecords = breathRecords
+        .where(
+          (record) =>
+              record.completedAt.year == now.year &&
+              record.completedAt.month == now.month &&
+              record.completedAt.day == now.day,
+        )
+        .toList();
+    final weekRecords = breathRecords
+        .where(
+          (record) =>
+              record.completedAt.isAfter(now.subtract(const Duration(days: 7))),
+        )
+        .toList();
+    final monthRecords = breathRecords
+        .where(
+          (record) => record.completedAt.isAfter(
+            now.subtract(const Duration(days: 30)),
+          ),
+        )
+        .toList();
 
     double calculateAverage(List<SurveyRecord> list) {
       if (list.isEmpty) {
         return 0;
       }
-      final values = list.map((record) => ((record.exhaleTestSeconds + record.inhaleTestSeconds) / 2)).toList();
+      final values = list
+          .map(
+            (record) =>
+                ((record.exhaleTestSeconds + record.inhaleTestSeconds) / 2),
+          )
+          .toList();
       return values.reduce((a, b) => a + b) / values.length;
     }
 
@@ -690,18 +791,139 @@ class StorageService {
     };
   }
 
-  Future<SurveyRecord?> loadLatestBreathRecord() async {
+  Future<Map<String, dynamic>> loadBreathProgressReport() async {
     final records = await loadSurveyHistory();
-    return records.reversed.where((record) => record.type == 'breath_test').firstOrNull;
+    final breathRecords =
+        records.where((record) => record.type == 'breath_test').toList()
+          ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
+
+    if (breathRecords.isEmpty) {
+      return {
+        'latestAverage': 0.0,
+        'previousAverage': 0.0,
+        'deltaFromPrevious': 0.0,
+        'deltaFromMonthlyAverage': 0.0,
+        'hasPrevious': false,
+      };
+    }
+
+    final latest = breathRecords.last;
+    final latestAverage =
+        ((latest.exhaleTestSeconds + latest.inhaleTestSeconds) / 2).toDouble();
+    final previous = breathRecords.length > 1
+        ? breathRecords[breathRecords.length - 2]
+        : null;
+    final previousAverage = previous == null
+        ? 0.0
+        : ((previous.exhaleTestSeconds + previous.inhaleTestSeconds) / 2)
+              .toDouble();
+    final metrics = await loadBreathMetrics();
+    final monthlyAverage = (metrics['monthlyAverage'] ?? 0.0).toDouble();
+
+    return {
+      'latestAverage': latestAverage,
+      'previousAverage': previousAverage,
+      'deltaFromPrevious': previous == null
+          ? 0.0
+          : latestAverage - previousAverage,
+      'deltaFromMonthlyAverage': latestAverage - monthlyAverage,
+      'hasPrevious': previous != null,
+    };
   }
 
-  Future<int> calculateAdjustedRiskScore({required int baseScore, required int exhaleSeconds, required int inhaleSeconds}) async {
+  Future<Map<String, dynamic>> loadLatestTaskTimingContext() async {
+    final relevantSurveyRecords = await _loadRelevantSurveyRecords();
+    final contextMap = await loadSurveyContextByRecordId();
+    final latestSurvey = relevantSurveyRecords.isEmpty
+        ? null
+        : relevantSurveyRecords.last;
+    final surveyContext = latestSurvey == null
+        ? null
+        : contextMap[latestSurvey.id];
+    final sensorEvents = await loadRecentSensorUsage(limit: 1);
+    final latestSensor = sensorEvents.isEmpty ? null : sensorEvents.last;
+    final now = DateTime.now();
+
+    final sleepTime = surveyContext?['sleepTime'] as String?;
+    final wakeTime = surveyContext?['wakeTime'] as String?;
+    final workStart = surveyContext?['workStart'] as String?;
+    final workEnd = surveyContext?['workEnd'] as String?;
+    final workplaceSmokingRule =
+        surveyContext?['workplaceSmokingRule'] as String?;
+
+    final isPhoneBusy =
+        latestSensor != null &&
+        (latestSensor.appUsageMinutes >= 10 ||
+            latestSensor.screenUnlockCount >= 8);
+    final isLongIdle =
+        latestSensor != null &&
+        latestSensor.idleMinutes >= 20 &&
+        latestSensor.appUsageMinutes <= 3;
+    final isDriving =
+        latestSensor != null &&
+        (latestSensor.activityState == 'driving' ||
+            (latestSensor.accelerometerMagnitude > 1.1 &&
+                latestSensor.gyroscopeMagnitude > 0.8 &&
+                latestSensor.screenUnlockCount <= 2));
+
+    final isSleepWindow = _isWithinWindow(
+      now: now,
+      startTime: sleepTime,
+      endTime: wakeTime,
+    );
+    final isWorkWindow = _isWithinWindow(
+      now: now,
+      startTime: workStart,
+      endTime: workEnd,
+    );
+
+    return {
+      'sleepTime': sleepTime,
+      'wakeTime': wakeTime,
+      'workStart': workStart,
+      'workEnd': workEnd,
+      'workplaceSmokingRule': workplaceSmokingRule,
+      'isPhoneBusy': isPhoneBusy,
+      'isLongIdle': isLongIdle,
+      'isDriving': isDriving,
+      'isSleepWindow': isSleepWindow,
+      'isWorkWindow': isWorkWindow,
+      'isActiveDuringSleep': isSleepWindow && isPhoneBusy,
+      'minutesUntilWake': _minutesUntilWindowEnds(now: now, endTime: wakeTime),
+      'minutesUntilWorkEnd': _minutesUntilWindowEnds(
+        now: now,
+        endTime: workEnd,
+      ),
+      'idleMinutes': latestSensor?.idleMinutes ?? 0,
+      'appUsageMinutes': latestSensor?.appUsageMinutes ?? 0,
+      'screenUnlockCount': latestSensor?.screenUnlockCount ?? 0,
+    };
+  }
+
+  Future<SurveyRecord?> loadLatestBreathRecord() async {
     final records = await loadSurveyHistory();
-    final breathRecords = records.where((record) => record.type == 'breath_test').toList();
+    return records.reversed
+        .where((record) => record.type == 'breath_test')
+        .firstOrNull;
+  }
+
+  Future<int> calculateAdjustedRiskScore({
+    required int baseScore,
+    required int exhaleSeconds,
+    required int inhaleSeconds,
+  }) async {
+    final records = await loadSurveyHistory();
+    final breathRecords = records
+        .where((record) => record.type == 'breath_test')
+        .toList();
     var adjustedScore = baseScore;
 
     if (breathRecords.isNotEmpty) {
-      final previousAverage = ((breathRecords.last.exhaleTestSeconds + breathRecords.last.inhaleTestSeconds) / 2).round();
+      final previousAverage =
+          ((breathRecords.last.exhaleTestSeconds +
+                      breathRecords.last.inhaleTestSeconds) /
+                  2)
+              .round();
       final currentAverage = ((exhaleSeconds + inhaleSeconds) / 2).round();
       final difference = currentAverage - previousAverage;
       adjustedScore += difference * 2;
@@ -724,7 +946,9 @@ class StorageService {
     );
 
     if (latestSurvey.id != 'fallback') {
-      adjustedScore += _behaviorEngine.calculatePackRiskContribution(latestSurvey.packsPerDay);
+      adjustedScore += _behaviorEngine.calculatePackRiskContribution(
+        latestSurvey.packsPerDay,
+      );
       adjustedScore += _behaviorEngine.calculateConsecutiveSmokingScore(
         habit: latestSurvey.consecutiveSmokingHabit,
         count: latestSurvey.consecutiveSmokingCount,
@@ -736,7 +960,9 @@ class StorageService {
 
   Future<List<SurveyRecord>> _loadRelevantSurveyRecords() async {
     final records = await loadSurveyHistory();
-    return records.where((record) => _surveyTypes.contains(record.type)).toList();
+    return records
+        .where((record) => _surveyTypes.contains(record.type))
+        .toList();
   }
 
   Future<BehaviorDashboard> loadBehaviorDashboard() async {
@@ -756,69 +982,84 @@ class StorageService {
     final sensorEvents = await loadRecentSensorUsage();
     final taskHistory = await loadTaskHistory();
 
-    final surveyRecords = records.where((record) => _surveyTypes.contains(record.type)).toList()
-      ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
-    final breathRecords = records.where((record) => record.type == 'breath_test').toList()
-      ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
+    final surveyRecords =
+        records.where((record) => _surveyTypes.contains(record.type)).toList()
+          ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
+    final breathRecords =
+        records.where((record) => record.type == 'breath_test').toList()
+          ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
 
-    final triggerScores = _behaviorEngine.calculateTriggerScoresFromSurveyRecords(
-      surveyRecords,
-      triggerMap,
-    );
+    final triggerScores = _behaviorEngine
+        .calculateTriggerScoresFromSurveyRecords(surveyRecords, triggerMap);
     final riskyTriggers = _behaviorEngine.calculateRiskyTriggers(triggerScores);
 
     final riskyHours = _behaviorEngine.calculateRiskyHoursFromTimestamps(
       surveyTimes: surveyRecords.map((record) => record.completedAt).toList(),
       appUsageTimes: sensorEvents
-          .where((event) => event.appUsageMinutes >= 5 || event.screenUnlockCount >= 6)
+          .where(
+            (event) =>
+                event.appUsageMinutes >= 5 || event.screenUnlockCount >= 6,
+          )
           .map((event) => event.createdAt)
           .toList(),
       taskFailureTimes: taskHistory
           .where((task) => !task.completed)
           .map((task) => task.date)
           .toList(),
-      breathTestTimes: breathRecords.map((record) => record.completedAt).toList(),
+      breathTestTimes: breathRecords
+          .map((record) => record.completedAt)
+          .toList(),
     );
 
-    final smokingTrend = _behaviorEngine.calculateSmokingTrendFromRecords(records);
-    final breathTrend = _behaviorEngine.calculateBreathTrendFromRecords(records);
-    final consecutiveTrend = _behaviorEngine.evaluateConsecutiveSmokingTrendFromRecords(records);
+    final smokingTrend = _behaviorEngine.calculateSmokingTrendFromRecords(
+      records,
+    );
+    final breathTrend = _behaviorEngine.calculateBreathTrendFromRecords(
+      records,
+    );
+    final consecutiveTrend = _behaviorEngine
+        .evaluateConsecutiveSmokingTrendFromRecords(records);
     final baseRisk = records.isEmpty ? 40 : records.last.riskScore;
 
     final latestSurvey = surveyRecords.isNotEmpty ? surveyRecords.last : null;
-    final latestContext = latestSurvey == null ? null : contextMap[latestSurvey.id];
+    final latestContext = latestSurvey == null
+        ? null
+        : contextMap[latestSurvey.id];
     final profileAdjustment = _behaviorEngine.calculateProfileRiskAdjustment(
       profession: latestContext?['profession'] as String?,
       sleepTime: latestContext?['sleepTime'] as String?,
       wakeTime: latestContext?['wakeTime'] as String?,
       healthConditions:
-          (latestContext?['healthConditions'] as List<String>?) ?? const <String>[],
+          (latestContext?['healthConditions'] as List<String>?) ??
+          const <String>[],
       packsPerDay: latestSurvey?.packsPerDay ?? '1 paketten az',
       consecutiveHabit: latestSurvey?.consecutiveSmokingHabit,
       consecutiveCount: latestSurvey?.consecutiveSmokingCount,
       hasBreathTests: breathRecords.isNotEmpty,
     );
 
-    final dynamicRisk = (_behaviorEngine.calculateDynamicRiskScore(
-      baseRiskScore: baseRisk,
-      smokingTrend: smokingTrend,
-      breathTrend: breathTrend,
-      consecutiveTrend: consecutiveTrend,
-      riskyTriggers: riskyTriggers,
-      riskyHours: riskyHours,
-    ) + profileAdjustment + _taskOutcomeRiskAdjustment(taskHistory))
-        .clamp(0, 100);
+    final dynamicRisk =
+        (_behaviorEngine.calculateDynamicRiskScore(
+                  baseRiskScore: baseRisk,
+                  smokingTrend: smokingTrend,
+                  breathTrend: breathTrend,
+                  consecutiveTrend: consecutiveTrend,
+                  riskyTriggers: riskyTriggers,
+                  riskyHours: riskyHours,
+                ) +
+                profileAdjustment +
+                _taskOutcomeRiskAdjustment(taskHistory))
+            .clamp(0, 100);
 
     final isFirstProfile =
-        existingSnapshot == null && surveyRecords.any((record) => record.type == 'initial') && breathRecords.isNotEmpty;
+        existingSnapshot == null &&
+        surveyRecords.any((record) => record.type == 'initial') &&
+        breathRecords.isNotEmpty;
 
     final taskRates = _behaviorEngine.calculateTaskSuccessRateMap(taskHistory);
-    final todaysTasks = _behaviorEngine.generateAdaptiveTasks(
-      riskScore: dynamicRisk,
-      taskSuccessRates: taskRates,
-      isFirstProfile: isFirstProfile,
-      count: isFirstProfile ? 1 : 3,
-    );
+    final taskOutcomeSummary = await loadTaskOutcomeSummary();
+    final recentSuccessCount = taskOutcomeSummary['recentSuccessCount'] ?? 0;
+    final recentFailureCount = taskOutcomeSummary['recentFailureCount'] ?? 0;
 
     final startDate = surveyRecords.isNotEmpty
         ? surveyRecords.first.completedAt
@@ -830,6 +1071,31 @@ class StorageService {
       smokingTrend: smokingTrend,
       riskyTriggers: riskyTriggers,
     );
+
+    final adaptiveTaskCount = recentFailureCount >= recentSuccessCount + 3
+        ? 5
+        : recentFailureCount > recentSuccessCount
+        ? 4
+        : recentSuccessCount >= recentFailureCount + 4
+        ? 2
+        : 3;
+    final baseTasks = _behaviorEngine.generateAdaptiveTasks(
+      riskScore: dynamicRisk,
+      taskSuccessRates: taskRates,
+      isFirstProfile: isFirstProfile,
+      count: isFirstProfile ? 1 : adaptiveTaskCount,
+    );
+    final progressiveCadenceTask = _behaviorEngine
+        .generateProgressiveCadenceTask180(
+          plan: adaptivePlan,
+          recentSuccessCount: recentSuccessCount,
+          recentFailureCount: recentFailureCount,
+        );
+
+    final todaysTasks = <String>{
+      if (!isFirstProfile) progressiveCadenceTask,
+      ...baseTasks,
+    }.toList();
 
     final prediction = _behaviorEngine.predictNextRisk(
       riskyHours: riskyHours,
@@ -862,8 +1128,11 @@ class StorageService {
         'generatedAt': dashboard.plan.generatedAt.toIso8601String(),
         'targetDays': dashboard.plan.targetDays,
         'currentWeek': dashboard.plan.currentWeek,
+        'currentDay': dashboard.plan.currentDay,
+        'daysRemaining': dashboard.plan.daysRemaining,
         'weeklyRiskTarget': dashboard.plan.weeklyRiskTarget,
         'difficulty': dashboard.plan.difficulty,
+        'cadenceLevel': dashboard.plan.cadenceLevel,
         'focusAreas': dashboard.plan.focusAreas,
       },
     });
@@ -885,6 +1154,62 @@ class StorageService {
       adjustment += item.completed ? -2 : 3;
     }
     return adjustment.clamp(-6, 12);
+  }
+
+  bool _isWithinWindow({
+    required DateTime now,
+    required String? startTime,
+    required String? endTime,
+  }) {
+    if (startTime == null || endTime == null) {
+      return false;
+    }
+
+    final startMinutes = _parseMinutes(startTime);
+    final endMinutes = _parseMinutes(endTime);
+    if (startMinutes == null || endMinutes == null) {
+      return false;
+    }
+
+    final currentMinutes = now.hour * 60 + now.minute;
+    if (startMinutes <= endMinutes) {
+      return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+    }
+
+    return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+  }
+
+  int _minutesUntilWindowEnds({
+    required DateTime now,
+    required String? endTime,
+  }) {
+    final endMinutes = _parseMinutes(endTime);
+    if (endMinutes == null) {
+      return 0;
+    }
+
+    final currentMinutes = now.hour * 60 + now.minute;
+    var delta = endMinutes - currentMinutes;
+    if (delta <= 0) {
+      delta += 24 * 60;
+    }
+    return delta;
+  }
+
+  int? _parseMinutes(String? time) {
+    if (time == null || time.isEmpty) {
+      return null;
+    }
+    final parts = time.split(':');
+    if (parts.length != 2) {
+      return null;
+    }
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) {
+      return null;
+    }
+    return (hour * 60) + minute;
   }
 
   Future<void> clearAllData() async {

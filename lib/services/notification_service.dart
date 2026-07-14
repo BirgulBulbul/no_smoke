@@ -28,6 +28,9 @@ class NotificationService {
 
   static const String _categoryTaskStart = 'task_start_category';
   static const String _categoryTaskFollowUp = 'task_followup_category';
+  static const String _taskStartChannelId = 'task_start_channel_v3';
+  static const String _taskFollowUpChannelId = 'task_followup_channel_v4';
+  static const String _breathReminderChannelId = 'breath_reminder_channel_v3';
 
   static Stream<Map<String, String>> get taskActionStream =>
       _taskActionController.stream;
@@ -96,9 +99,41 @@ class NotificationService {
         ?.requestNotificationsPermission();
     await _plugin
         .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.requestExactAlarmsPermission();
+    await _plugin
+        .resolvePlatformSpecificImplementation<
           IOSFlutterLocalNotificationsPlugin
         >()
         ?.requestPermissions(alert: true, badge: true, sound: true);
+  }
+
+  static Future<AndroidScheduleMode> _resolveAndroidScheduleMode() async {
+    final androidPlugin = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    if (androidPlugin == null) {
+      return AndroidScheduleMode.inexactAllowWhileIdle;
+    }
+
+    try {
+      final canScheduleExact =
+          await androidPlugin.canScheduleExactNotifications() ?? false;
+      if (canScheduleExact) {
+        return AndroidScheduleMode.exactAllowWhileIdle;
+      }
+
+      final granted = await androidPlugin.requestExactAlarmsPermission();
+      if (granted == true) {
+        return AndroidScheduleMode.exactAllowWhileIdle;
+      }
+    } catch (_) {
+      // Fallback to inexact scheduling on unsupported devices/APIs.
+    }
+
+    return AndroidScheduleMode.inexactAllowWhileIdle;
   }
 
   static void _handleNotificationResponse(NotificationResponse response) {
@@ -146,6 +181,7 @@ class NotificationService {
     required String taskTitle,
     required String taskDescription,
   }) async {
+    final code = await LanguageService.loadSelectedLanguageCode();
     final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
     await _plugin.show(
       id,
@@ -153,21 +189,23 @@ class NotificationService {
       taskDescription,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          'task_start_channel',
+          _taskStartChannelId,
           'İlk görev tetikleme',
           importance: Importance.max,
           priority: Priority.high,
           playSound: true,
+          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          category: AndroidNotificationCategory.reminder,
           actions: <AndroidNotificationAction>[
-            const AndroidNotificationAction(
+            AndroidNotificationAction(
               _actionTaskDone,
-              'Tamam',
+              _text(code, 'taskActionDoneLabel'),
               showsUserInterface: true,
               cancelNotification: true,
             ),
-            const AndroidNotificationAction(
+            AndroidNotificationAction(
               _actionTaskNotNow,
-              'Şimdi Uygun Değil',
+              _text(code, 'taskActionNotNowLabel'),
               showsUserInterface: true,
               cancelNotification: true,
             ),
@@ -185,31 +223,35 @@ class NotificationService {
     required String taskDescription,
     Duration delay = const Duration(minutes: 10),
   }) async {
+    final code = await LanguageService.loadSelectedLanguageCode();
+    final scheduleMode = await _resolveAndroidScheduleMode();
     final now = tz.TZDateTime.now(tz.local);
     final fireAt = now.add(delay);
     final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
     await _plugin.zonedSchedule(
       id,
-      'İlk Görev',
+      _text(code, 'taskStartTitle'),
       taskDescription,
       fireAt,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          'task_start_channel',
+          _taskStartChannelId,
           'İlk görev tetikleme',
           importance: Importance.max,
           priority: Priority.high,
           playSound: true,
+          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          category: AndroidNotificationCategory.reminder,
           actions: <AndroidNotificationAction>[
-            const AndroidNotificationAction(
+            AndroidNotificationAction(
               _actionTaskDone,
-              'Tamam',
+              _text(code, 'taskActionDoneLabel'),
               showsUserInterface: true,
               cancelNotification: true,
             ),
-            const AndroidNotificationAction(
+            AndroidNotificationAction(
               _actionTaskNotNow,
-              'Şimdi Uygun Değil',
+              _text(code, 'taskActionNotNowLabel'),
               showsUserInterface: true,
               cancelNotification: true,
             ),
@@ -219,7 +261,7 @@ class NotificationService {
           categoryIdentifier: _categoryTaskStart,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: scheduleMode,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: jsonEncode({
@@ -232,6 +274,7 @@ class NotificationService {
   static Future<void> scheduleDailyBreathReminder({
     required String sleepTime,
   }) async {
+    final scheduleMode = await _resolveAndroidScheduleMode();
     final code = await LanguageService.loadSelectedLanguageCode();
     final parts = sleepTime.split(':');
     final hour = int.tryParse(parts[0]) ?? 21;
@@ -264,15 +307,17 @@ class NotificationService {
       finalDate,
       const NotificationDetails(
         android: AndroidNotificationDetails(
-          'breath_reminder_channel',
+          _breathReminderChannelId,
           'Nefes testi hatırlatıcı',
           importance: Importance.max,
           priority: Priority.high,
           playSound: true,
+          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          category: AndroidNotificationCategory.reminder,
         ),
         iOS: DarwinNotificationDetails(presentSound: true),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: scheduleMode,
       matchDateTimeComponents: DateTimeComponents.time,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
@@ -284,6 +329,7 @@ class NotificationService {
     required String taskTitle,
     Duration delay = const Duration(minutes: 30),
   }) async {
+    final scheduleMode = await _resolveAndroidScheduleMode();
     final code = await LanguageService.loadSelectedLanguageCode();
     final now = tz.TZDateTime.now(tz.local);
     var fireAt = now.add(delay);
@@ -305,21 +351,24 @@ class NotificationService {
       fireAt,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          'task_followup_channel',
+          _taskFollowUpChannelId,
           'Görev takip hatırlatıcı',
           importance: Importance.max,
           priority: Priority.high,
           playSound: true,
+          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          category: AndroidNotificationCategory.call,
+          fullScreenIntent: true,
           actions: <AndroidNotificationAction>[
-            const AndroidNotificationAction(
+            AndroidNotificationAction(
               _actionSmokedYes,
-              'Evet',
+              _text(code, 'taskFollowUpActionYes'),
               showsUserInterface: true,
               cancelNotification: true,
             ),
-            const AndroidNotificationAction(
+            AndroidNotificationAction(
               _actionSmokedNo,
-              'Hayır',
+              _text(code, 'taskFollowUpActionNo'),
               showsUserInterface: true,
               cancelNotification: true,
             ),
@@ -330,7 +379,7 @@ class NotificationService {
           presentSound: true,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: scheduleMode,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: jsonEncode({'type': _typeTaskFollowUp, 'taskTitle': taskTitle}),
@@ -349,11 +398,13 @@ class NotificationService {
       '${_text(code, 'taskTimerStartedBody')}\n$taskTitle\n${_text(code, 'taskTimerDuration')}: ${duration.inMinutes} ${_text(code, 'minutesShort')}.',
       const NotificationDetails(
         android: AndroidNotificationDetails(
-          'task_start_channel',
+          _taskStartChannelId,
           'Task timer start',
           importance: Importance.max,
           priority: Priority.high,
           playSound: true,
+          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          category: AndroidNotificationCategory.reminder,
         ),
         iOS: DarwinNotificationDetails(presentSound: true),
       ),
@@ -375,14 +426,19 @@ class NotificationService {
       'no': 'Hayır',
       'taskActionDone': 'Tamam',
       'taskActionNotNow': 'Şimdi Uygun Değil',
+      'taskActionDoneLabel': 'Tamam',
+      'taskActionNotNowLabel': 'Simdi uygun degil',
+      'taskFollowUpActionYes': 'Evet',
+      'taskFollowUpActionNo': 'Hayir',
+      'taskStartTitle': 'Gorev Hatirlatmasi',
       'breathReminderTitle': 'Nefes Testi',
       'breathReminderBody': 'Günlük nefes testi zamanı geldi.',
       'breathReminderDriving':
           'Sürüşte güvenliğiniz için hatırlatma kısa süre ertelendi.',
       'taskFollowUpTitlePush': 'Görev Takibi',
-      'taskFollowUpQuestion': 'Bu görev sırasında sigara içtiniz mi?',
+      'taskFollowUpQuestion': 'Gorevi basariyla tamamladiniz mi?',
       'taskFollowUpQuestionDriving':
-          'Sürüş sonrası cevaplayın: Bu görev sırasında sigara içtiniz mi?',
+          'Surus sonrasi cevaplayin: Gorevi basariyla tamamladiniz mi?',
       'taskTimerStartedTitle': 'İlk Görev',
       'taskTimerStartedBody': 'Görev başladı:',
       'taskTimerDuration': 'Sayaç',
@@ -394,13 +450,18 @@ class NotificationService {
       'no': 'No',
       'taskActionDone': 'Complete',
       'taskActionNotNow': 'Not now',
+      'taskActionDoneLabel': 'Complete',
+      'taskActionNotNowLabel': 'Not now',
+      'taskFollowUpActionYes': 'Yes',
+      'taskFollowUpActionNo': 'No',
+      'taskStartTitle': 'Task Reminder',
       'breathReminderTitle': 'Breath Test',
       'breathReminderBody': 'Time for your daily breath test.',
       'breathReminderDriving': 'Reminder delayed briefly for driving safety.',
       'taskFollowUpTitlePush': 'Task Follow-up',
-      'taskFollowUpQuestion': 'Did you smoke during this task?',
+      'taskFollowUpQuestion': 'Did you complete the task successfully?',
       'taskFollowUpQuestionDriving':
-          'Answer after driving: Did you smoke during this task?',
+          'Answer after driving: Did you complete the task successfully?',
       'taskTimerStartedTitle': 'First Task',
       'taskTimerStartedBody': 'Task started:',
       'taskTimerDuration': 'Timer',

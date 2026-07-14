@@ -2,12 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/app_texts.dart';
 import '../main.dart';
-import '../models/survey_record.dart';
 import '../services/language_service.dart';
-import '../services/storage_service.dart';
 import '../widgets/no_smoke_logo.dart';
-import 'breath_test_page.dart';
-import 'survey_page.dart';
+import 'trial_info_page.dart';
 
 class LanguageSelectionPage extends StatefulWidget {
   const LanguageSelectionPage({super.key});
@@ -18,36 +15,6 @@ class LanguageSelectionPage extends StatefulWidget {
 
 class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
   String _selectedCode = 'tr';
-
-  Map<String, dynamic> _resolveHomeSeed(List<SurveyRecord> records) {
-    String name = 'User';
-    String packsPerDay = '1 paketten az';
-    int riskScore = 40;
-    String riskLevel = 'ORTA';
-
-    for (final record in records.reversed) {
-      if (record.name.toString().trim().isNotEmpty) {
-        name = record.name.toString().trim();
-        break;
-      }
-    }
-
-    for (final record in records.reversed) {
-      if (record.type == 'breath_test' || record.type == 'weekly' || record.type == 'initial') {
-        packsPerDay = record.packsPerDay;
-        riskScore = record.riskScore;
-        riskLevel = record.riskLevel;
-        break;
-      }
-    }
-
-    return {
-      'name': name,
-      'packsPerDay': packsPerDay,
-      'riskScore': riskScore,
-      'riskLevel': riskLevel,
-    };
-  }
 
   @override
   void initState() {
@@ -70,35 +37,14 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
     if (!context.mounted) {
       return;
     }
-    NoSmokeApp.setLocale(context, LanguageService.supportedLanguages[languageCode] ?? const Locale('tr'));
+    NoSmokeApp.setLocale(
+      context,
+      LanguageService.supportedLanguages[languageCode] ?? const Locale('tr'),
+    );
 
-    final storage = StorageService();
-    final records = await storage.loadSurveyHistory();
-    final hasInitialSetup = records.any((record) => record.type == 'initial');
-
-    if (!context.mounted) {
-      return;
-    }
-
-    if (!hasInitialSetup) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const SurveyPage()),
-      );
-      return;
-    }
-
-    final seed = _resolveHomeSeed(records);
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (_) => BreathTestPage(
-          name: seed['name'] as String,
-          packsPerDay: seed['packsPerDay'] as String,
-          navigateToHomeOnComplete: true,
-          askWeeklySurveyOnComplete: true,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => const TrialInfoPage()),
     );
   }
 
@@ -121,8 +67,12 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
         onPressed: () => _continue(context, code),
         style: FilledButton.styleFrom(
           minimumSize: const Size(double.infinity, 64),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          side: selected ? const BorderSide(color: Colors.white, width: 1.5) : null,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          side: selected
+              ? const BorderSide(color: Colors.white, width: 1.5)
+              : null,
         ),
         child: child,
       );
@@ -167,17 +117,41 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
                     ),
                   ),
                   const SizedBox(height: 28),
-                  _buildLanguageButton(code: 'tr', label: '🇹🇷 Türkçe', primary: true),
+                  _buildLanguageButton(
+                    code: 'tr',
+                    label: '🇹🇷 Türkçe',
+                    primary: true,
+                  ),
                   const SizedBox(height: 12),
-                  _buildLanguageButton(code: 'en', label: '🇬🇧 English', primary: false),
+                  _buildLanguageButton(
+                    code: 'en',
+                    label: '🇬🇧 English',
+                    primary: false,
+                  ),
                   const SizedBox(height: 12),
-                  _buildLanguageButton(code: 'de', label: '🇩🇪 Deutsch', primary: false),
+                  _buildLanguageButton(
+                    code: 'de',
+                    label: '🇩🇪 Deutsch',
+                    primary: false,
+                  ),
                   const SizedBox(height: 12),
-                  _buildLanguageButton(code: 'ar', label: '🇸🇦 العربية', primary: false),
+                  _buildLanguageButton(
+                    code: 'ar',
+                    label: '🇸🇦 العربية',
+                    primary: false,
+                  ),
                   const SizedBox(height: 12),
-                  _buildLanguageButton(code: 'fr', label: '🇫🇷 Français', primary: false),
+                  _buildLanguageButton(
+                    code: 'fr',
+                    label: '🇫🇷 Français',
+                    primary: false,
+                  ),
                   const SizedBox(height: 12),
-                  _buildLanguageButton(code: 'es', label: '🇪🇸 Español', primary: false),
+                  _buildLanguageButton(
+                    code: 'es',
+                    label: '🇪🇸 Español',
+                    primary: false,
+                  ),
                 ],
               ),
             ),

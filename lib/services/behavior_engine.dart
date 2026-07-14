@@ -43,27 +43,27 @@ class BehaviorEngine {
   };
 
   static const List<String> _easyTasks = [
-    'Ilk sigarayi 20 dakika ertele',
+    'Ilk sigarayi 10 dakika ertele',
     'Bir bardak su ic',
     '2 dakikalik nefes egzersizi yap',
-    'Kisa bir yuruyus yap',
+    '10 dakika sigarasiz kal',
     'Kriz anini not et',
   ];
 
   static const List<String> _mediumTasks = [
-    'Ilk sigarayi 45 dakika ertele',
+    'Ilk sigarayi 25 dakika ertele',
     'Bugun bir sigarayi atla',
-    '3 dakikalik nefes egzersizi yap',
+    '30 dakika sigarasiz kal',
     'Riskli saatte seker sakiz kullan',
-    'Kahve sonrasi alternatif rutin uygula',
+    '45 dakika sigarasiz kal',
   ];
 
   static const List<String> _hardTasks = [
-    '2 saat sigarasiz kal',
+    '60 dakika sigarasiz kal',
     'Bugun 2 sigara eksik ic',
-    'Riskli tetikleyiciden aktif kacin',
+    '90 dakika sigarasiz kal',
+    '120 dakika sigarasiz kal',
     'Aksam saatinde destek kisisiyle iletisim kur',
-    'Meydan okuma: zincir icmeyi tamamen durdur',
   ];
 
   Map<String, int> calculateTriggerScores(List<SurveyHistory> surveys) {
@@ -93,7 +93,8 @@ class BehaviorEngine {
       for (final entry in _baseTriggerScores.entries) entry.key: entry.value,
     };
 
-    final sorted = [...surveys]..sort((a, b) => a.completedAt.compareTo(b.completedAt));
+    final sorted = [...surveys]
+      ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
     for (final record in sorted) {
       if (record.type != 'initial' && record.type != 'weekly') {
         continue;
@@ -101,7 +102,9 @@ class BehaviorEngine {
 
       final selectedTriggers = triggerByRecordId[record.id] ?? const <String>[];
       for (final key in scores.keys.toList()) {
-        final selected = selectedTriggers.any((item) => _normalizeTrigger(item) == key);
+        final selected = selectedTriggers.any(
+          (item) => _normalizeTrigger(item) == key,
+        );
         final nextValue = (scores[key] ?? 10) + (selected ? 5 : -1);
         scores[key] = max(0, nextValue);
       }
@@ -111,14 +114,18 @@ class BehaviorEngine {
   }
 
   int calculateConsecutiveSmokingScore({String? habit, String? count}) {
-    if (habit == null || habit.trim().isEmpty || _normalizeText(habit) == 'Hayir') {
+    if (habit == null ||
+        habit.trim().isEmpty ||
+        _normalizeText(habit) == 'Hayir') {
       return 0;
     }
     return _consecutiveSmokingScores[count?.trim() ?? ''] ?? 0;
   }
 
   String summarizeConsecutiveSmoking({String? habit, String? count}) {
-    if (habit == null || habit.trim().isEmpty || _normalizeText(habit) == 'Hayir') {
+    if (habit == null ||
+        habit.trim().isEmpty ||
+        _normalizeText(habit) == 'Hayir') {
       return 'Hayır';
     }
     if (count == null || count.trim().isEmpty) {
@@ -221,17 +228,22 @@ class BehaviorEngine {
     return sorted.take(3).map((entry) => entry.key).toList();
   }
 
-  List<Map<String, dynamic>> calculateTaskSuccessRates(List<TaskHistory> tasks) {
+  List<Map<String, dynamic>> calculateTaskSuccessRates(
+    List<TaskHistory> tasks,
+  ) {
     final grouped = <String, Map<String, dynamic>>{};
 
     for (final task in tasks) {
-      final entry = grouped.putIfAbsent(task.taskTitle, () => {
-        'taskTitle': task.taskTitle,
-        'totalCount': 0,
-        'successCount': 0,
-        'failureCount': 0,
-        'successRate': 0.0,
-      });
+      final entry = grouped.putIfAbsent(
+        task.taskTitle,
+        () => {
+          'taskTitle': task.taskTitle,
+          'totalCount': 0,
+          'successCount': 0,
+          'failureCount': 0,
+          'successRate': 0.0,
+        },
+      );
 
       entry['totalCount'] = (entry['totalCount'] as int) + 1;
       if (task.completed) {
@@ -245,8 +257,9 @@ class BehaviorEngine {
 
     final sorted = grouped.values.toList()
       ..sort((a, b) {
-        final rateCompare =
-            (b['successRate'] as double).compareTo(a['successRate'] as double);
+        final rateCompare = (b['successRate'] as double).compareTo(
+          a['successRate'] as double,
+        );
         if (rateCompare != 0) {
           return rateCompare;
         }
@@ -259,8 +272,8 @@ class BehaviorEngine {
   Map<String, double> calculateTaskSuccessRateMap(List<TaskHistory> tasks) {
     final rates = <String, double>{};
     for (final row in calculateTaskSuccessRates(tasks)) {
-      rates[row['taskTitle'] as String] =
-          (row['successRate'] as num).toDouble();
+      rates[row['taskTitle'] as String] = (row['successRate'] as num)
+          .toDouble();
     }
     return rates;
   }
@@ -283,17 +296,22 @@ class BehaviorEngine {
   }
 
   String calculateBreathTrendFromRecords(List<SurveyRecord> records) {
-    final breathRecords = records.where((record) => record.type == 'breath_test').toList()
-      ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
+    final breathRecords =
+        records.where((record) => record.type == 'breath_test').toList()
+          ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
 
     if (breathRecords.length < 2) {
       return 'Stable';
     }
 
     final first =
-        (breathRecords.first.exhaleTestSeconds + breathRecords.first.inhaleTestSeconds) / 2;
+        (breathRecords.first.exhaleTestSeconds +
+            breathRecords.first.inhaleTestSeconds) /
+        2;
     final last =
-        (breathRecords.last.exhaleTestSeconds + breathRecords.last.inhaleTestSeconds) / 2;
+        (breathRecords.last.exhaleTestSeconds +
+            breathRecords.last.inhaleTestSeconds) /
+        2;
 
     if (last > first) {
       return 'Improving';
@@ -326,10 +344,13 @@ class BehaviorEngine {
   }
 
   String calculateSmokingTrendFromRecords(List<SurveyRecord> records) {
-    final surveys = records
-        .where((record) => record.type == 'initial' || record.type == 'weekly')
-        .toList()
-      ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
+    final surveys =
+        records
+            .where(
+              (record) => record.type == 'initial' || record.type == 'weekly',
+            )
+            .toList()
+          ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
 
     if (surveys.length < 2) {
       return 'Stable';
@@ -372,10 +393,12 @@ class BehaviorEngine {
       return 'noRecordYet';
     }
 
-    final previousScore =
-        calculateChainSmokingRiskContribution(surveys[surveys.length - 2].chainSmokingLevel);
-    final currentScore =
-        calculateChainSmokingRiskContribution(surveys.last.chainSmokingLevel);
+    final previousScore = calculateChainSmokingRiskContribution(
+      surveys[surveys.length - 2].chainSmokingLevel,
+    );
+    final currentScore = calculateChainSmokingRiskContribution(
+      surveys.last.chainSmokingLevel,
+    );
 
     if (currentScore < previousScore) {
       return 'trendImproving';
@@ -386,7 +409,9 @@ class BehaviorEngine {
     return 'trendStable';
   }
 
-  String evaluateConsecutiveSmokingTrendFromRecords(List<SurveyRecord> records) {
+  String evaluateConsecutiveSmokingTrendFromRecords(
+    List<SurveyRecord> records,
+  ) {
     final relevant = _extractRelevantSurveyRecords(records);
     if (relevant.length < 2) {
       return 'trendStable';
@@ -454,20 +479,20 @@ class BehaviorEngine {
   }) {
     if (isFirstProfile) {
       if (riskScore >= 70) {
-        return const ['İlk sigaranızı 15 dakika geciktirin.'];
+        return const ['Ilk sigaranizi 10 dakika geciktirin.'];
       }
       if (riskScore >= 40) {
-        return const ['Bugün 1 sigarayı atlamayı deneyin.'];
+        return const ['Ilk sigaranizi 20 dakika geciktirin.'];
       }
-      return const ['İlk sigaranızı 60 dakika geciktirin.'];
+      return const ['Ilk sigaranizi 45 dakika geciktirin.'];
     }
 
     final difficulty = chooseTaskDifficulty(riskScore);
     final pool = difficulty == 'easy'
         ? _easyTasks
         : difficulty == 'medium'
-            ? _mediumTasks
-            : _hardTasks;
+        ? _mediumTasks
+        : _hardTasks;
 
     final weighted = pool.map((task) {
       final rate = taskSuccessRates[task] ?? 0.5;
@@ -477,7 +502,10 @@ class BehaviorEngine {
 
     final selected = <String>{};
     while (selected.length < min(count, weighted.length)) {
-      final totalWeight = weighted.fold<double>(0, (sum, item) => sum + item.value);
+      final totalWeight = weighted.fold<double>(
+        0,
+        (sum, item) => sum + item.value,
+      );
       final roll = _random.nextDouble() * totalWeight;
       var running = 0.0;
       for (final item in weighted) {
@@ -516,10 +544,12 @@ class BehaviorEngine {
 
     adjustment += min(healthConditions.length, 4) * 2;
     adjustment += calculatePackRiskContribution(packsPerDay) ~/ 10;
-    adjustment += calculateConsecutiveSmokingScore(
-      habit: consecutiveHabit,
-      count: consecutiveCount,
-    ) ~/ 5;
+    adjustment +=
+        calculateConsecutiveSmokingScore(
+          habit: consecutiveHabit,
+          count: consecutiveCount,
+        ) ~/
+        5;
 
     if (!hasBreathTests) {
       adjustment += 6;
@@ -535,9 +565,18 @@ class BehaviorEngine {
     required String smokingTrend,
     required List<String> riskyTriggers,
   }) {
-    final elapsedWeeks =
-        max(1, DateTime.now().difference(startDate).inDays ~/ 7 + 1);
-    final weeklyRiskTarget = max(5, (riskScore - elapsedWeeks * 2).clamp(5, 95));
+    final elapsedDays = max(1, DateTime.now().difference(startDate).inDays + 1);
+    final elapsedWeeks = max(1, ((elapsedDays - 1) ~/ 7) + 1);
+    final daysRemaining = max(0, 180 - elapsedDays);
+    final weeklyRiskTarget = max(
+      5,
+      (riskScore - elapsedWeeks * 2).clamp(5, 95),
+    );
+    final cadenceLevel = elapsedDays >= 120
+        ? 'week'
+        : elapsedDays >= 60
+        ? 'two_days'
+        : 'one_day';
 
     final focus = <String>[
       if (riskyTriggers.isNotEmpty) 'Tetikleyici yonetimi',
@@ -550,10 +589,37 @@ class BehaviorEngine {
       generatedAt: DateTime.now(),
       targetDays: 180,
       currentWeek: elapsedWeeks,
+      currentDay: elapsedDays,
+      daysRemaining: daysRemaining,
       weeklyRiskTarget: weeklyRiskTarget,
       difficulty: chooseTaskDifficulty(riskScore),
+      cadenceLevel: cadenceLevel,
       focusAreas: focus.take(3).toList(),
     );
+  }
+
+  String generateProgressiveCadenceTask180({
+    required AdaptivePlan plan,
+    required int recentSuccessCount,
+    required int recentFailureCount,
+  }) {
+    final isStruggling = recentFailureCount > recentSuccessCount;
+
+    if (plan.currentDay >= 120) {
+      if (isStruggling) {
+        return '2 gun sigarasiz kalma plani: kriz aninda 10 derin nefes + su uygulayin.';
+      }
+      return '1 hafta sigarasiz kalma hedefi: 7 gun boyunca tum gorevleri tamamlayin.';
+    }
+
+    if (plan.currentDay >= 60) {
+      if (isStruggling) {
+        return '1 gun sigarasiz kalma gorevi: ilk sigarayi en az 90 dakika erteleyin.';
+      }
+      return '2 gun sigarasiz kalma gorevi: 48 saat boyunca tetikleyicilerde sigarayi erteleyin.';
+    }
+
+    return '1 gun sigarasiz kalma gorevi: bugun tum kriz anlarinda sigarayi erteleyin.';
   }
 
   Map<String, dynamic> predictNextRisk({
@@ -562,9 +628,12 @@ class BehaviorEngine {
     required int riskScore,
     required List<SensorUsageEvent> sensorEvents,
   }) {
-    final nextRiskWindow = riskyHours.isNotEmpty ? riskyHours.first : '20:00-22:00';
-    final nextRiskTrigger =
-        riskyTriggers.isNotEmpty ? riskyTriggers.first : 'Stres';
+    final nextRiskWindow = riskyHours.isNotEmpty
+        ? riskyHours.first
+        : '20:00-22:00';
+    final nextRiskTrigger = riskyTriggers.isNotEmpty
+        ? riskyTriggers.first
+        : 'Stres';
 
     var confidence = 45;
     confidence += min(riskyHours.length, 3) * 8;
@@ -595,18 +664,22 @@ class BehaviorEngine {
 
     for (final record in records) {
       if ((record.type == 'initial' || record.type == 'weekly') &&
-          (lastSurveyDate == null || record.completedAt.isAfter(lastSurveyDate))) {
+          (lastSurveyDate == null ||
+              record.completedAt.isAfter(lastSurveyDate))) {
         lastSurveyDate = record.completedAt;
       }
       if (record.type == 'breath_test' &&
-          (lastBreathDate == null || record.completedAt.isAfter(lastBreathDate))) {
+          (lastBreathDate == null ||
+              record.completedAt.isAfter(lastBreathDate))) {
         lastBreathDate = record.completedAt;
       }
     }
 
     final breathTrend = calculateBreathTrendFromRecords(records);
     final smokingTrend = calculateSmokingTrendFromRecords(records);
-    final consecutiveTrend = evaluateConsecutiveSmokingTrendFromRecords(records);
+    final consecutiveTrend = evaluateConsecutiveSmokingTrendFromRecords(
+      records,
+    );
 
     final progressSummary = _deriveProgressStatus(
       smokingTrend: smokingTrend,
@@ -656,7 +729,9 @@ class BehaviorEngine {
         : _calculateConsecutiveSmokingStatusFromSurveys(surveys);
 
     final latestSurvey = surveys.isEmpty ? null : surveys.last;
-    final riskScore = latestSurvey == null ? 0 : _effectiveRiskScore(latestSurvey);
+    final riskScore = latestSurvey == null
+        ? 0
+        : _effectiveRiskScore(latestSurvey);
 
     final successfulTasks = <String, Map<String, dynamic>>{};
     final failedTasks = <String, Map<String, dynamic>>{};
@@ -741,11 +816,12 @@ class BehaviorEngine {
     if (maxScore <= 0) {
       return const [];
     }
-    final risky = triggerScores.entries
-        .where((entry) => entry.value == maxScore)
-        .map((entry) => entry.key)
-        .toList()
-      ..sort();
+    final risky =
+        triggerScores.entries
+            .where((entry) => entry.value == maxScore)
+            .map((entry) => entry.key)
+            .toList()
+          ..sort();
     return risky;
   }
 
@@ -801,7 +877,9 @@ class BehaviorEngine {
     return '${startHour.toString().padLeft(2, '0')}:00-${endHour.toString().padLeft(2, '0')}:00';
   }
 
-  String _calculateConsecutiveSmokingTrendFromRecords(List<SurveyRecord> records) {
+  String _calculateConsecutiveSmokingTrendFromRecords(
+    List<SurveyRecord> records,
+  ) {
     final relevantRecords = _extractRelevantSurveyRecords(records);
     if (relevantRecords.length < 2) {
       return 'noRecordYet';
@@ -817,7 +895,9 @@ class BehaviorEngine {
     );
   }
 
-  String _calculateConsecutiveSmokingStatusFromRecords(List<SurveyRecord> records) {
+  String _calculateConsecutiveSmokingStatusFromRecords(
+    List<SurveyRecord> records,
+  ) {
     final relevantRecords = _extractRelevantSurveyRecords(records);
     if (relevantRecords.isEmpty) {
       return 'noRecordYet';
@@ -829,7 +909,9 @@ class BehaviorEngine {
     );
   }
 
-  String _calculateConsecutiveSmokingStatusFromSurveys(List<SurveyHistory> surveys) {
+  String _calculateConsecutiveSmokingStatusFromSurveys(
+    List<SurveyHistory> surveys,
+  ) {
     if (surveys.isEmpty) {
       return 'noRecordYet';
     }
@@ -850,7 +932,8 @@ class BehaviorEngine {
         'Riskli tetikleyicileri 1 hafta boyunca not et',
       if (riskyHours.isNotEmpty) 'Riskli saatlerde alternatif bir rutin uygula',
       if (breathTrend == 'Declining') 'Nefes testini gunluk tekrarla',
-      if (smokingTrend == 'Increasing') 'Gunluk paket miktarini bir kademe azalt',
+      if (smokingTrend == 'Increasing')
+        'Gunluk paket miktarini bir kademe azalt',
       if (consecutiveSmokingTrend == 'trendDeclining')
         'Arka arkaya sigara dongusunu erteleme ile kir',
       if (consecutiveSmokingStatus.contains('5+ adet') ||
@@ -935,7 +1018,8 @@ class BehaviorEngine {
   }
 
   int _effectiveRiskScore(SurveyHistory survey) {
-    final total = survey.riskScore +
+    final total =
+        survey.riskScore +
         calculatePackRiskContribution(survey.packsPerDay) +
         calculateChainSmokingRiskContribution(survey.chainSmokingLevel);
     return total.clamp(0, 100);
@@ -946,13 +1030,20 @@ class BehaviorEngine {
       return 0;
     }
 
-    final recent = events.length > 20 ? events.sublist(events.length - 20) : events;
-    final activeCount = recent.where((item) => item.activityState != 'idle').length;
+    final recent = events.length > 20
+        ? events.sublist(events.length - 20)
+        : events;
+    final activeCount = recent
+        .where((item) => item.activityState != 'idle')
+        .length;
     final activityRatio = activeCount / recent.length;
     return (activityRatio * 12).round();
   }
 
-  bool _hasShortSleepWindow({required String? sleepTime, required String? wakeTime}) {
+  bool _hasShortSleepWindow({
+    required String? sleepTime,
+    required String? wakeTime,
+  }) {
     if (sleepTime == null || wakeTime == null) {
       return false;
     }
@@ -967,7 +1058,10 @@ class BehaviorEngine {
     final sleepMinute = int.tryParse(sleepParts[1]);
     final wakeHour = int.tryParse(wakeParts[0]);
     final wakeMinute = int.tryParse(wakeParts[1]);
-    if (sleepHour == null || sleepMinute == null || wakeHour == null || wakeMinute == null) {
+    if (sleepHour == null ||
+        sleepMinute == null ||
+        wakeHour == null ||
+        wakeMinute == null) {
       return false;
     }
 

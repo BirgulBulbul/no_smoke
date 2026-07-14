@@ -45,12 +45,18 @@ class _HomePageState extends State<HomePage> {
   String _breathTrendText = '...';
   String _weeklyImprovementText = '...';
   String _monthlyImprovementText = '...';
+  String _breathPreviousReportText = '...';
+  String _breathAverageReportText = '...';
   String _progressSummaryText = '...';
   String _predictedRiskWindow = '...';
   String _predictedTrigger = '...';
   int _predictionConfidence = 0;
   int _adaptiveRiskScore = 0;
   int _weeklyRiskTarget = 0;
+  int _planCurrentDay = 1;
+  int _planTargetDays = 180;
+  int _planDaysRemaining = 179;
+  String _planCadenceLevel = 'one_day';
   List<String> _riskyTriggers = const [];
   List<String> _riskyHours = const [];
   List<String> _todaysTasks = const [];
@@ -58,6 +64,8 @@ class _HomePageState extends State<HomePage> {
   String _consecutiveSmokingPreviousText = '...';
   String _consecutiveSmokingTrendText = '...';
   String _consecutiveSmokingStatusText = '...';
+  int _successfulTaskCount = 0;
+  int _failedTaskCount = 0;
   double _weeklyAverage = 0;
   double _monthlyAverage = 0;
   double _dailyAverage = 0;
@@ -199,6 +207,10 @@ class _HomePageState extends State<HomePage> {
         taskTitle: taskTitle,
         scheduledAt: followUpAt,
       );
+      await NotificationService.showTaskTimerStartedNotification(
+        taskTitle: taskTitle,
+        duration: delay,
+      );
       await NotificationService.scheduleTaskFollowUpReminder(
         taskTitle: taskTitle,
         delay: delay,
@@ -229,7 +241,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (actionId == 'smoked_yes' || actionId == 'smoked_no') {
-      final success = actionId == 'smoked_no';
+      final success = actionId == 'smoked_yes';
       await _storageService.saveTaskResult(
         taskTitle: taskTitle,
         taskResult: success ? 'success' : 'failed',
@@ -255,8 +267,10 @@ class _HomePageState extends State<HomePage> {
     final lastDate = await _storageService.loadLastSurveyDate();
     final latestBreath = await _storageService.loadLatestBreathRecord();
     final metrics = await _storageService.loadBreathMetrics();
+    final breathProgress = await _storageService.loadBreathProgressReport();
     final consecutiveSmokingSummary = await _storageService
         .loadConsecutiveSmokingSummary();
+    final taskOutcomeSummary = await _storageService.loadTaskOutcomeSummary();
     final behavior = registrationCompleted
         ? await _storageService.loadBehaviorDashboard()
         : await _storageService.loadLatestBehaviorSnapshot();
@@ -292,6 +306,18 @@ class _HomePageState extends State<HomePage> {
         _monthlyAverage,
         _dailyAverage,
       );
+      _breathPreviousReportText = _buildBreathDeltaText(
+        delta: (breathProgress['deltaFromPrevious'] as num?)?.toDouble() ?? 0,
+        hasReference: breathProgress['hasPrevious'] == true,
+        comparisonMode: 'previous',
+      );
+      _breathAverageReportText = _buildBreathDeltaText(
+        delta:
+            (breathProgress['deltaFromMonthlyAverage'] as num?)?.toDouble() ??
+            0,
+        hasReference: true,
+        comparisonMode: 'average',
+      );
       _adaptiveRiskScore = behavior?.riskScore ?? 0;
       _riskyTriggers = behavior?.riskyTriggers ?? const [];
       _riskyHours = behavior?.riskyHours ?? const [];
@@ -302,6 +328,10 @@ class _HomePageState extends State<HomePage> {
       _predictedTrigger = behavior?.predictedTrigger ?? '...';
       _predictionConfidence = behavior?.predictionConfidence ?? 0;
       _weeklyRiskTarget = behavior?.plan.weeklyRiskTarget ?? 0;
+      _planCurrentDay = behavior?.plan.currentDay ?? 1;
+      _planTargetDays = behavior?.plan.targetDays ?? 180;
+      _planDaysRemaining = behavior?.plan.daysRemaining ?? 179;
+      _planCadenceLevel = behavior?.plan.cadenceLevel ?? 'one_day';
       _consecutiveSmokingLatestText =
           consecutiveSmokingSummary['latest'] ?? context.t('noRecordYet');
       _consecutiveSmokingPreviousText =
@@ -310,6 +340,8 @@ class _HomePageState extends State<HomePage> {
           consecutiveSmokingSummary['trend'] ?? context.t('noRecordYet');
       _consecutiveSmokingStatusText =
           consecutiveSmokingSummary['status'] ?? context.t('noRecordYet');
+      _successfulTaskCount = taskOutcomeSummary['successCount'] ?? 0;
+      _failedTaskCount = taskOutcomeSummary['failureCount'] ?? 0;
       for (final task in _todaysTasks) {
         _taskStates.putIfAbsent(task, () => 'new');
       }
@@ -331,6 +363,7 @@ class _HomePageState extends State<HomePage> {
     if (_todaysTasks.isEmpty) {
       return;
     }
+    final timingContext = await _storageService.loadLatestTaskTimingContext();
     var index = 0;
     for (final task in _todaysTasks) {
       if (_notifiedTaskTitles.contains(task)) {
@@ -339,18 +372,15 @@ class _HomePageState extends State<HomePage> {
       if ((_taskStates[task] ?? 'new') != 'new') {
         continue;
       }
-      final delay = Duration(minutes: 10 + (index * 10));
+      final delay = _resolveTaskNotificationDelay(
+        taskTitle: task,
+        index: index,
+        timingContext: timingContext,
+      );
       await NotificationService.scheduleFirstTaskTriggerNotification(
         taskDescription: task,
         delay: delay,
       );
-
-      final followUpAt = DateTime.now().add(delay);
-      await _storageService.saveTaskFollowUp(
-        taskTitle: task,
-        scheduledAt: followUpAt,
-      );
-      _scheduleLocalFollowUp(task, followUpAt);
 
       _notifiedTaskTitles.add(task);
       index += 1;
@@ -358,13 +388,132 @@ class _HomePageState extends State<HomePage> {
   }
 
   Duration _resolveInitialTaskDelay(String taskTitle) {
-    if (taskTitle.contains('60 dakika')) {
-      return const Duration(minutes: 60);
+    final minuteMatch = RegExp(
+      r'(\d+)\s*dakika',
+      caseSensitive: false,
+    ).firstMatch(taskTitle);
+    if (minuteMatch != null) {
+      final minutes = int.tryParse(minuteMatch.group(1) ?? '');
+      if (minutes != null && minutes > 0) {
+        return Duration(minutes: minutes);
+      }
     }
-    if (taskTitle.contains('15 dakika')) {
-      return const Duration(minutes: 15);
+
+    final hourMatch = RegExp(
+      r'(\d+)\s*saat',
+      caseSensitive: false,
+    ).firstMatch(taskTitle);
+    if (hourMatch != null) {
+      final hours = int.tryParse(hourMatch.group(1) ?? '');
+      if (hours != null && hours > 0) {
+        return Duration(hours: hours);
+      }
     }
+
     return const Duration(minutes: 30);
+  }
+
+  Duration _resolveTaskNotificationDelay({
+    required String taskTitle,
+    required int index,
+    required Map<String, dynamic> timingContext,
+  }) {
+    final riskScore = _adaptiveRiskScore == 0
+        ? widget.riskScore
+        : _adaptiveRiskScore;
+    final baseMinutes = riskScore >= 80
+        ? 10
+        : riskScore >= 60
+        ? 20
+        : riskScore >= 40
+        ? 35
+        : riskScore >= 20
+        ? 50
+        : 75;
+    final gapMinutes = riskScore >= 80
+        ? 12
+        : riskScore >= 60
+        ? 20
+        : riskScore >= 40
+        ? 30
+        : riskScore >= 20
+        ? 45
+        : 60;
+
+    var minutes = baseMinutes + (index * gapMinutes);
+    final isDriving = timingContext['isDriving'] == true;
+    final isSleepWindow = timingContext['isSleepWindow'] == true;
+    final isActiveDuringSleep = timingContext['isActiveDuringSleep'] == true;
+    final isWorkWindow = timingContext['isWorkWindow'] == true;
+    final isPhoneBusy = timingContext['isPhoneBusy'] == true;
+    final isLongIdle = timingContext['isLongIdle'] == true;
+    final workplaceSmokingRule =
+        (timingContext['workplaceSmokingRule'] as String?) ?? '';
+    final minutesUntilWake =
+        (timingContext['minutesUntilWake'] as num?)?.toInt() ?? 0;
+    final minutesUntilWorkEnd =
+        (timingContext['minutesUntilWorkEnd'] as num?)?.toInt() ?? 0;
+
+    if (isDriving) {
+      minutes += 20;
+    }
+
+    if (isSleepWindow) {
+      if (isActiveDuringSleep) {
+        minutes = 3 + (index * 3);
+      } else {
+        minutes = minutesUntilWake + 5 + (index * 5);
+      }
+    }
+
+    if (isWorkWindow) {
+      if (workplaceSmokingRule == 'Hayır') {
+        minutes = minutesUntilWorkEnd + 10 + (index * 5);
+      } else if (workplaceSmokingRule == 'Sadece molalarda') {
+        minutes = minutes < 30 ? 30 : minutes;
+      }
+    }
+
+    if (isPhoneBusy && !isSleepWindow && !isDriving) {
+      minutes += 15;
+    }
+
+    if (isLongIdle && !isSleepWindow && !isDriving) {
+      minutes = minutes > 5 ? 5 + (index * 5) : minutes;
+    }
+
+    if (taskTitle.contains('120 dakika') || taskTitle.contains('2 saat')) {
+      minutes += 20;
+    } else if (taskTitle.contains('90 dakika')) {
+      minutes += 10;
+    }
+
+    return Duration(minutes: minutes < 3 ? 3 : minutes);
+  }
+
+  String _buildBreathDeltaText({
+    required double delta,
+    required bool hasReference,
+    required String comparisonMode,
+  }) {
+    if (!hasReference) {
+      return context.t('breathNoReferenceYet');
+    }
+
+    final amount = delta.abs().toStringAsFixed(1);
+    if (delta > 0.2) {
+      return comparisonMode == 'previous'
+          ? '${context.t('breathComparedPreviousImproved')} $amount${context.t('secShort')}'
+          : '${context.t('breathComparedAverageImproved')} $amount${context.t('secShort')}';
+    }
+    if (delta < -0.2) {
+      return comparisonMode == 'previous'
+          ? '${context.t('breathComparedPreviousDeclined')} $amount${context.t('secShort')}'
+          : '${context.t('breathComparedAverageDeclined')} $amount${context.t('secShort')}';
+    }
+    return comparisonMode == 'previous'
+        ? context.t('breathComparedPreviousStable')
+        : context.t('breathComparedAverageStable');
   }
 
   void _showRegistrationError(String message) {
@@ -493,7 +642,6 @@ class _HomePageState extends State<HomePage> {
       debugPrint('[CompleteRegistration] Creating first task: $firstTask');
       final createdAt = DateTime.now();
       const followUpDelay = Duration(minutes: 10);
-      final followUpAt = createdAt.add(followUpDelay);
 
       try {
         await _storageService.saveTaskResult(
@@ -510,34 +658,16 @@ class _HomePageState extends State<HomePage> {
       }
 
       try {
-        await NotificationService.showTaskTimerStartedNotification(
-          taskTitle: firstTask,
-          duration: followUpDelay,
-        );
-        debugPrint(
-          '[CompleteRegistration] showTaskTimerStartedNotification ok',
-        );
-      } catch (error, stackTrace) {
-        debugPrint(
-          '[CompleteRegistration] showTaskTimerStartedNotification failed (non-blocking): $error',
-        );
-        debugPrintStack(stackTrace: stackTrace);
-      }
-
-      try {
-        await _storageService.saveTaskFollowUp(
-          taskTitle: firstTask,
-          scheduledAt: followUpAt,
-        );
-        await NotificationService.scheduleTaskFollowUpReminder(
-          taskTitle: firstTask,
+        await NotificationService.scheduleFirstTaskTriggerNotification(
+          taskDescription: firstTask,
           delay: followUpDelay,
         );
-        _scheduleLocalFollowUp(firstTask, followUpAt);
-        debugPrint('[CompleteRegistration] task follow-up timer started (15m)');
+        debugPrint(
+          '[CompleteRegistration] first task notification scheduled (10m)',
+        );
       } catch (error, stackTrace) {
         debugPrint(
-          '[CompleteRegistration] task follow-up timer scheduling failed (non-blocking): $error',
+          '[CompleteRegistration] first task notification scheduling failed (non-blocking): $error',
         );
         debugPrintStack(stackTrace: stackTrace);
       }
@@ -705,6 +835,20 @@ class _HomePageState extends State<HomePage> {
         : _progressSummaryText == 'Stable'
         ? context.t('trendStable')
         : _progressSummaryText;
+    final cadenceLabel = _planCadenceLevel == 'week'
+        ? context.t('goal180CadenceWeek')
+        : _planCadenceLevel == 'two_days'
+        ? context.t('goal180CadenceTwoDays')
+        : context.t('goal180CadenceOneDay');
+    final guideText = _planCurrentDay >= 120
+        ? (_failedTaskCount > _successfulTaskCount
+              ? context.t('goal180GuideLateHard')
+              : context.t('goal180GuideLate'))
+        : _planCurrentDay >= 60
+        ? (_failedTaskCount > _successfulTaskCount
+              ? context.t('goal180GuideMidHard')
+              : context.t('goal180GuideMid'))
+        : context.t('goal180GuideEarly');
 
     return Card(
       child: Padding(
@@ -734,6 +878,18 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 6),
             Text('${context.t('weeklyRiskTarget')}: $_weeklyRiskTarget / 100'),
+            const SizedBox(height: 6),
+            Text(
+              '${context.t('goal180ProgressLabel')}: $_planCurrentDay / $_planTargetDays ${context.t('days')}',
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${context.t('goal180RemainingLabel')}: $_planDaysRemaining ${context.t('days')}',
+            ),
+            const SizedBox(height: 6),
+            Text('${context.t('goal180CadenceLabel')}: $cadenceLabel'),
+            const SizedBox(height: 6),
+            Text(guideText),
           ],
         ),
       ),
@@ -762,6 +918,12 @@ class _HomePageState extends State<HomePage> {
                   '${context.t('taskFollowUpPendingCount')}: ${_pendingFollowUps.length}',
                 ),
               ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '${context.t('successfulTaskCount')}: $_successfulTaskCount • ${context.t('failedTaskCount')}: $_failedTaskCount',
+              ),
+            ),
             ...tasks.map((task) {
               if (_todaysTasks.isEmpty) {
                 return Padding(
@@ -836,6 +998,14 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 6),
             Text(
               '${context.t('monthlyImprovement')}: ${_translateTrend(_monthlyImprovementText)}',
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${context.t('breathPreviousComparison')}: $_breathPreviousReportText',
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${context.t('breathAverageComparison')}: $_breathAverageReportText',
             ),
           ],
         ),

@@ -31,8 +31,8 @@ class _SurveyPageState extends State<SurveyPage> {
   String workplaceSmokingRule = 'Hayır';
   String stressLevel = 'Orta';
   String quitReason = 'Sağlık';
-  String sleepTime = '21:00';
-  String wakeTime = '07:00';
+  String? sleepTime;
+  String? wakeTime;
   String? workStartTime;
   String? workEndTime;
   String packOption = '1 paketten az';
@@ -66,10 +66,7 @@ class _SurveyPageState extends State<SurveyPage> {
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Text(
         title,
-        style: const TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-        ),
+        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -92,26 +89,20 @@ class _SurveyPageState extends State<SurveyPage> {
   }
 
   List<String> get timeOptions {
-    return List.generate(
-      48,
-      (index) {
-        final hour = (index ~/ 2).toString().padLeft(2, '0');
-        final minute = index.isEven ? '00' : '30';
-        return '$hour:$minute';
-      },
-    );
+    return List.generate(48, (index) {
+      final hour = (index ~/ 2).toString().padLeft(2, '0');
+      final minute = index.isEven ? '00' : '30';
+      return '$hour:$minute';
+    });
   }
 
   List<String> get workTimeOptions {
-    return List.generate(
-      38,
-      (index) {
-        final totalMinutes = (5 * 60) + (index * 30);
-        final hour = (totalMinutes ~/ 60).toString().padLeft(2, '0');
-        final minute = (totalMinutes % 60).toString().padLeft(2, '0');
-        return '$hour:$minute';
-      },
-    );
+    return List.generate(38, (index) {
+      final totalMinutes = (5 * 60) + (index * 30);
+      final hour = (totalMinutes ~/ 60).toString().padLeft(2, '0');
+      final minute = (totalMinutes % 60).toString().padLeft(2, '0');
+      return '$hour:$minute';
+    });
   }
 
   static const List<String> smokingYearOptions = [
@@ -126,6 +117,48 @@ class _SurveyPageState extends State<SurveyPage> {
       return highPackOption ?? '4 paket';
     }
     return packOption;
+  }
+
+  String _professionLabel(String value, BuildContext context) {
+    switch (value) {
+      case 'Öğrenci':
+        return context.t('professionStudent');
+      case 'Memur':
+        return context.t('professionOfficer');
+      case 'İşçi':
+        return context.t('professionWorker');
+      case 'Sağlık Çalışanı':
+        return context.t('professionHealthcare');
+      case 'Öğretmen':
+        return context.t('professionTeacher');
+      case 'Mühendis':
+        return context.t('professionEngineer');
+      case 'Esnaf':
+        return context.t('professionTradesman');
+      case 'Emekli':
+        return context.t('professionRetired');
+      case 'Serbest Çalışıyor':
+        return context.t('professionFreelance');
+      case 'Diğer':
+        return context.t('professionOther');
+      default:
+        return value;
+    }
+  }
+
+  String _smokingYearsLabel(String value, BuildContext context) {
+    switch (value) {
+      case '1-3 yıl':
+        return context.t('smokingYears1to3');
+      case '4-7 yıl':
+        return context.t('smokingYears4to7');
+      case '8-10 yıl':
+        return context.t('smokingYears8to10');
+      case '10+ yıl':
+        return context.t('smokingYears10plus');
+      default:
+        return value;
+    }
   }
 
   List<String> _selectedTriggerLabels() {
@@ -174,7 +207,9 @@ class _SurveyPageState extends State<SurveyPage> {
       riskScore: 0,
       riskLevel: 'BAŞLANGIÇ',
       consecutiveSmokingHabit: consecutiveSmokingHabit,
-      consecutiveSmokingCount: consecutiveSmokingHabit == 'Evet' ? consecutiveSmokingCount : null,
+      consecutiveSmokingCount: consecutiveSmokingHabit == 'Evet'
+          ? consecutiveSmokingCount
+          : null,
     );
 
     try {
@@ -210,7 +245,7 @@ class _SurveyPageState extends State<SurveyPage> {
     }
 
     try {
-      await _storageService.saveSleepTime(sleepTime);
+      await _storageService.saveSleepTime(sleepTime!);
       debugPrint('[SurveyPage] saveSleepTime ok: $sleepTime');
     } catch (error, stackTrace) {
       debugPrint('[SurveyPage] saveSleepTime failed (non-blocking): $error');
@@ -218,10 +253,14 @@ class _SurveyPageState extends State<SurveyPage> {
     }
 
     try {
-      await NotificationService.scheduleDailyBreathReminder(sleepTime: sleepTime);
+      await NotificationService.scheduleDailyBreathReminder(
+        sleepTime: sleepTime!,
+      );
       debugPrint('[SurveyPage] scheduleDailyBreathReminder ok');
     } catch (error, stackTrace) {
-      debugPrint('[SurveyPage] scheduleDailyBreathReminder failed (non-blocking): $error');
+      debugPrint(
+        '[SurveyPage] scheduleDailyBreathReminder failed (non-blocking): $error',
+      );
       debugPrintStack(stackTrace: stackTrace);
     }
 
@@ -240,47 +279,55 @@ class _SurveyPageState extends State<SurveyPage> {
           triggers: selectedTriggers,
           healthConditions: selectedHealth,
           profession: profession ?? 'Belirtilmedi',
-          sleepTime: sleepTime,
-          wakeTime: wakeTime,
+          sleepTime: sleepTime!,
+          wakeTime: wakeTime!,
           latestExhaleSeconds: 0,
           latestInhaleSeconds: 0,
         ),
       );
       debugPrint('[SurveyPage] saveUserProfileSnapshot ok: profile_$recordId');
     } catch (error, stackTrace) {
-      debugPrint('[SurveyPage] saveUserProfileSnapshot failed (non-blocking): $error');
+      debugPrint(
+        '[SurveyPage] saveUserProfileSnapshot failed (non-blocking): $error',
+      );
       debugPrintStack(stackTrace: stackTrace);
     }
   }
 
   String? _missingRequiredFieldMessage() {
     if (nameController.text.trim().isEmpty) {
-      return 'Lütfen Ad alanını doldurun.';
+      return context.t('validationNameRequired');
     }
     if (ageController.text.trim().isEmpty) {
-      return 'Lütfen Yaş alanını doldurun.';
+      return context.t('validationAgeRequired');
     }
     if (gender == null || gender!.isEmpty) {
-      return 'Lütfen Cinsiyet seçin.';
+      return context.t('validationGenderRequired');
     }
     if (profession == null || profession!.isEmpty) {
-      return 'Lütfen Meslek alanını doldurun.';
+      return context.t('validationProfessionRequired');
     }
     if (smokingYears == null || smokingYears!.isEmpty) {
-      return 'Lütfen Kaç yıldır sigara içtiğinizi belirtin.';
+      return context.t('validationSmokingYearsRequired');
     }
     if (consecutiveSmokingHabit == null || consecutiveSmokingHabit!.isEmpty) {
-      return 'Lütfen arka arkaya sigara içme durumunu seçin.';
+      return context.t('validationChainHabitRequired');
     }
     if (consecutiveSmokingHabit == 'Evet' &&
         (consecutiveSmokingCount == null || consecutiveSmokingCount!.isEmpty)) {
-      return 'Lütfen arka arkaya sigara adedini seçin.';
+      return context.t('validationChainCountRequired');
+    }
+    if (sleepTime == null || sleepTime!.isEmpty) {
+      return context.t('validationSleepTimeRequired');
+    }
+    if (wakeTime == null || wakeTime!.isEmpty) {
+      return context.t('validationWakeTimeRequired');
     }
     if (workStartTime == null || workStartTime!.isEmpty) {
-      return 'Lütfen Çalışma başlangıç saatini girin.';
+      return context.t('validationWorkStartRequired');
     }
     if (workEndTime == null || workEndTime!.isEmpty) {
-      return 'Lütfen Çalışma bitiş saatini girin.';
+      return context.t('validationWorkEndRequired');
     }
     return null;
   }
@@ -288,11 +335,7 @@ class _SurveyPageState extends State<SurveyPage> {
   void _showValidationMessage(String message) {
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(message),
-      ),
-    );
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -311,7 +354,7 @@ class _SurveyPageState extends State<SurveyPage> {
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+            children: [
               const NoSmokeLogo(size: 110, showLabel: true),
               const SizedBox(height: 20),
               Text(
@@ -323,437 +366,515 @@ class _SurveyPageState extends State<SurveyPage> {
                 ),
               ),
               const SizedBox(height: 20),
-            TextFormField(
-              controller: nameController,
-              decoration: InputDecoration(
-                labelText: context.t('name'),
-                border: OutlineInputBorder(),
-              ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return '';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 10),
-            TextFormField(
-              controller: ageController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: context.t('age'),
-                border: OutlineInputBorder(),
-              ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return '';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              key: const ValueKey('gender_dropdown'),
-              initialValue: gender,
-              decoration: InputDecoration(
-                labelText: context.t('gender'),
-                border: OutlineInputBorder(),
-              ),
-              hint: const Text('Lütfen seçin'),
-              items: [
-                DropdownMenuItem(value: 'Erkek', child: Text(context.t('male'))),
-                DropdownMenuItem(value: 'Kadın', child: Text(context.t('female'))),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  gender = value;
-                });
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return '';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              key: const ValueKey('profession_dropdown'),
-              initialValue: profession,
-              decoration: const InputDecoration(
-                labelText: 'Meslek',
-                border: OutlineInputBorder(),
-              ),
-              hint: const Text('Lütfen seçin'),
-              items: professionOptions
-                  .map(
-                    (value) => DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(value),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                setState(() {
-                  profession = value;
-                });
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return '';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 10),
-            sectionTitle(context.t('smokingInfo')),
-            PacksPerDaySection(
-              selectedPackOption: packOption,
-              selectedHighPackOption: highPackOption,
-              onPackOptionChanged: (value) {
-                setState(() {
-                  packOption = value;
-                  if (value != '3+ paket') {
-                    highPackOption = null;
-                  } else {
-                    highPackOption ??= PacksPerDaySection.highPackOptions.first;
+              TextFormField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  labelText: context.t('name'),
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return '';
                   }
-                });
-              },
-              onHighPackOptionChanged: (value) {
-                setState(() {
-                  highPackOption = value;
-                });
-              },
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: firstCigaretteRange,
-              decoration: InputDecoration(
-                labelText: context.t('firstCigaretteWhen'),
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                DropdownMenuItem(value: '0-5', child: Text(context.t('firstCigarette0to5'))),
-                DropdownMenuItem(value: '5-10', child: Text(context.t('firstCigarette5to10'))),
-                DropdownMenuItem(value: '10-30', child: Text(context.t('firstCigarette10to30'))),
-                DropdownMenuItem(value: '30-60', child: Text(context.t('firstCigarette30to60'))),
-                DropdownMenuItem(value: '60+', child: Text(context.t('firstCigarette60plus'))),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  firstCigaretteRange = value!;
-                });
-              },
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: smokeFreeRange,
-              decoration: InputDecoration(
-                labelText: context.t('maxSmokeFreeDuration'),
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                DropdownMenuItem(value: '0-15', child: Text(context.t('smokeFree0to15'))),
-                DropdownMenuItem(value: '15-30', child: Text(context.t('smokeFree15to30'))),
-                DropdownMenuItem(value: '30-60', child: Text(context.t('smokeFree30to60'))),
-                DropdownMenuItem(value: '60-120', child: Text(context.t('smokeFree60to120'))),
-                DropdownMenuItem(value: '120-240', child: Text(context.t('smokeFree120to240'))),
-                DropdownMenuItem(value: '240+', child: Text(context.t('smokeFree240plus'))),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  smokeFreeRange = value!;
-                });
-              },
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: smokingYears,
-              decoration: InputDecoration(
-                labelText: context.t('smokingYears'),
-                border: OutlineInputBorder(),
-              ),
-              hint: const Text('Lütfen seçin'),
-              items: smokingYearOptions
-                  .map(
-                    (value) => DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(value),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                setState(() {
-                  smokingYears = value;
-                });
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return '';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 10),
-            ConsecutiveSmokingSection(
-              consecutiveSmokingHabit: consecutiveSmokingHabit,
-              consecutiveSmokingCount: consecutiveSmokingCount,
-              onHabitChanged: (value) {
-                setState(() {
-                  consecutiveSmokingHabit = value;
-                  if (value != 'Evet') {
-                    consecutiveSmokingCount = null;
-                  }
-                });
-              },
-              onCountChanged: (value) {
-                setState(() {
-                  consecutiveSmokingCount = value;
-                });
-              },
-            ),
-            const SizedBox(height: 20),
-            sectionTitle(context.t('lifeRoutine')),
-            DropdownButtonFormField<String>(
-              initialValue: sleepTime,
-              decoration: InputDecoration(
-                labelText: context.t('sleepTime'),
-                border: OutlineInputBorder(),
-              ),
-              items: timeOptions
-                  .map(
-                    (time) => DropdownMenuItem<String>(
-                      value: time,
-                      child: Text(time),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                setState(() {
-                  sleepTime = value!;
-                });
-              },
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: wakeTime,
-              decoration: InputDecoration(
-                labelText: context.t('wakeTime'),
-                border: OutlineInputBorder(),
-              ),
-              items: timeOptions
-                  .map(
-                    (time) => DropdownMenuItem<String>(
-                      value: time,
-                      child: Text(time),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                setState(() {
-                  wakeTime = value!;
-                });
-              },
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: workStartTime,
-              decoration: InputDecoration(
-                labelText: context.t('workStart'),
-                border: OutlineInputBorder(),
-              ),
-              hint: const Text('Lütfen seçin'),
-              items: workTimeOptions
-                  .map(
-                    (time) => DropdownMenuItem<String>(
-                      value: time,
-                      child: Text(time),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                setState(() {
-                  workStartTime = value;
-                });
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return '';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: workEndTime,
-              decoration: InputDecoration(
-                labelText: context.t('workEnd'),
-                border: OutlineInputBorder(),
-              ),
-              hint: const Text('Lütfen seçin'),
-              items: workTimeOptions
-                  .map(
-                    (time) => DropdownMenuItem<String>(
-                      value: time,
-                      child: Text(time),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                setState(() {
-                  workEndTime = value;
-                });
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return '';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: workplaceSmokingRule,
-              decoration: InputDecoration(
-                labelText: context.t('workplaceSmoking'),
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                DropdownMenuItem(value: 'Evet', child: Text(context.t('yes'))),
-                DropdownMenuItem(value: 'Hayır', child: Text(context.t('no'))),
-                DropdownMenuItem(value: 'Sadece molalarda', child: Text(context.t('onlyBreaks'))),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  workplaceSmokingRule = value!;
-                });
-              },
-            ),
-            const SizedBox(height: 20),
-            sectionTitle(context.t('healthStatus')),
-            CheckboxListTile(
-              value: hypertension,
-              title: Text(context.t('hypertension')),
-              onChanged: (value) => setState(() => hypertension = value ?? false),
-            ),
-            CheckboxListTile(
-              value: asthma,
-              title: Text(context.t('asthma')),
-              onChanged: (value) => setState(() => asthma = value ?? false),
-            ),
-            CheckboxListTile(
-              value: diabetes,
-              title: Text(context.t('diabetes')),
-              onChanged: (value) => setState(() => diabetes = value ?? false),
-            ),
-            CheckboxListTile(
-              value: copd,
-              title: Text(context.t('copd')),
-              onChanged: (value) => setState(() => copd = value ?? false),
-            ),
-            CheckboxListTile(
-              value: heartDisease,
-              title: Text(context.t('heartDisease')),
-              onChanged: (value) => setState(() => heartDisease = value ?? false),
-            ),
-            const SizedBox(height: 20),
-            sectionTitle(context.t('triggerTitle')),
-            triggerTile(context.t('triggerCoffee'), 'coffee'),
-            triggerTile(context.t('triggerMeal'), 'meal'),
-            triggerTile(context.t('triggerDriving'), 'driving'),
-            triggerTile(context.t('triggerStress'), 'stress'),
-            triggerTile(context.t('triggerPhone'), 'phone'),
-            triggerTile(context.t('triggerSocial'), 'social'),
-            triggerTile(context.t('triggerAlcohol'), 'alcohol'),
-            const SizedBox(height: 20),
-            sectionTitle(context.t('stressTitle')),
-            DropdownButtonFormField<String>(
-              initialValue: stressLevel,
-              decoration: InputDecoration(
-                labelText: context.t('stressTitle'),
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                DropdownMenuItem(value: 'Düşük', child: Text(context.t('stressLow'))),
-                DropdownMenuItem(value: 'Orta', child: Text(context.t('stressMedium'))),
-                DropdownMenuItem(value: 'Yüksek', child: Text(context.t('stressHigh'))),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  stressLevel = value!;
-                });
-              },
-            ),
-            const SizedBox(height: 10),
-            sectionTitle(context.t('quitReasonTitle')),
-            DropdownButtonFormField<String>(
-              initialValue: quitReason,
-              decoration: InputDecoration(
-                labelText: context.t('quitReason'),
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                DropdownMenuItem(value: 'Sağlık', child: Text(context.t('quitHealth'))),
-                DropdownMenuItem(value: 'Aile', child: Text(context.t('quitFamily'))),
-                DropdownMenuItem(value: 'Maddi sebepler', child: Text(context.t('quitMoney'))),
-                DropdownMenuItem(value: 'Çocuklar', child: Text(context.t('quitChildren'))),
-                DropdownMenuItem(value: 'Performans', child: Text(context.t('quitPerformance'))),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  quitReason = value!;
-                });
-              },
-            ),
-            const SizedBox(height: 25),
-            SizedBox(
-              width: double.infinity,
-              height: 60,
-              child: ElevatedButton(
-                key: const ValueKey('survey_continue_button'),
-                onPressed: () async {
-                  _formKey.currentState?.validate();
-                  final missingMessage = _missingRequiredFieldMessage();
-
-                  if (missingMessage != null) {
-                    if (!mounted) return;
-                    _showValidationMessage(missingMessage);
-                    return;
-                  }
-
-                  try {
-                    await _saveInitialSurveyRecord();
-                  } catch (error, stackTrace) {
-                    debugPrint('[SurveyPage] Initial survey save failed: $error');
-                    debugPrintStack(stackTrace: stackTrace);
-                    if (!mounted) return;
-                    _showValidationMessage(
-                      'Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.',
-                    );
-                    return;
-                  }
-
-                  if (!context.mounted) return;
-                  final navigator = Navigator.of(context);
-                  await navigator.push(
-                    MaterialPageRoute(
-                      builder: (_) => BreathTestPage(
-                        name: nameController.text.trim(),
-                        packsPerDay: _resolvedPacksPerDay,
-                      ),
-                    ),
-                  );
+                  return null;
                 },
-                child: Text(
-                  context.t('continue'),
-                  style: TextStyle(fontSize: 20),
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: ageController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: context.t('age'),
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return '';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                key: const ValueKey('gender_dropdown'),
+                initialValue: gender,
+                decoration: InputDecoration(
+                  labelText: context.t('gender'),
+                  border: OutlineInputBorder(),
+                ),
+                hint: Text(context.t('selectOption')),
+                items: [
+                  DropdownMenuItem(
+                    value: 'Erkek',
+                    child: Text(context.t('male')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Kadın',
+                    child: Text(context.t('female')),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    gender = value;
+                  });
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return '';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                key: const ValueKey('profession_dropdown'),
+                initialValue: profession,
+                decoration: InputDecoration(
+                  labelText: context.t('professionLabel'),
+                  border: OutlineInputBorder(),
+                ),
+                hint: Text(context.t('selectOption')),
+                items: professionOptions
+                    .map(
+                      (value) => DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(_professionLabel(value, context)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    profession = value;
+                  });
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return '';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 10),
+              sectionTitle(context.t('smokingInfo')),
+              PacksPerDaySection(
+                selectedPackOption: packOption,
+                selectedHighPackOption: highPackOption,
+                onPackOptionChanged: (value) {
+                  setState(() {
+                    packOption = value;
+                    if (value != '3+ paket') {
+                      highPackOption = null;
+                    } else {
+                      highPackOption ??=
+                          PacksPerDaySection.highPackOptions.first;
+                    }
+                  });
+                },
+                onHighPackOptionChanged: (value) {
+                  setState(() {
+                    highPackOption = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: firstCigaretteRange,
+                decoration: InputDecoration(
+                  labelText: context.t('firstCigaretteWhen'),
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: '0-5',
+                    child: Text(context.t('firstCigarette0to5')),
+                  ),
+                  DropdownMenuItem(
+                    value: '5-10',
+                    child: Text(context.t('firstCigarette5to10')),
+                  ),
+                  DropdownMenuItem(
+                    value: '10-30',
+                    child: Text(context.t('firstCigarette10to30')),
+                  ),
+                  DropdownMenuItem(
+                    value: '30-60',
+                    child: Text(context.t('firstCigarette30to60')),
+                  ),
+                  DropdownMenuItem(
+                    value: '60+',
+                    child: Text(context.t('firstCigarette60plus')),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    firstCigaretteRange = value!;
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: smokeFreeRange,
+                decoration: InputDecoration(
+                  labelText: context.t('maxSmokeFreeDuration'),
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: '0-15',
+                    child: Text(context.t('smokeFree0to15')),
+                  ),
+                  DropdownMenuItem(
+                    value: '15-30',
+                    child: Text(context.t('smokeFree15to30')),
+                  ),
+                  DropdownMenuItem(
+                    value: '30-60',
+                    child: Text(context.t('smokeFree30to60')),
+                  ),
+                  DropdownMenuItem(
+                    value: '60-120',
+                    child: Text(context.t('smokeFree60to120')),
+                  ),
+                  DropdownMenuItem(
+                    value: '120-240',
+                    child: Text(context.t('smokeFree120to240')),
+                  ),
+                  DropdownMenuItem(
+                    value: '240+',
+                    child: Text(context.t('smokeFree240plus')),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    smokeFreeRange = value!;
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: smokingYears,
+                decoration: InputDecoration(
+                  labelText: context.t('smokingYears'),
+                  border: OutlineInputBorder(),
+                ),
+                hint: Text(context.t('selectOption')),
+                items: smokingYearOptions
+                    .map(
+                      (value) => DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(_smokingYearsLabel(value, context)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    smokingYears = value;
+                  });
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return '';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 10),
+              ConsecutiveSmokingSection(
+                consecutiveSmokingHabit: consecutiveSmokingHabit,
+                consecutiveSmokingCount: consecutiveSmokingCount,
+                onHabitChanged: (value) {
+                  setState(() {
+                    consecutiveSmokingHabit = value;
+                    if (value != 'Evet') {
+                      consecutiveSmokingCount = null;
+                    }
+                  });
+                },
+                onCountChanged: (value) {
+                  setState(() {
+                    consecutiveSmokingCount = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 20),
+              sectionTitle(context.t('lifeRoutine')),
+              DropdownButtonFormField<String>(
+                initialValue: sleepTime,
+                decoration: InputDecoration(
+                  labelText: context.t('sleepTime'),
+                  border: OutlineInputBorder(),
+                ),
+                hint: Text(context.t('selectOption')),
+                items: timeOptions
+                    .map(
+                      (time) => DropdownMenuItem<String>(
+                        value: time,
+                        child: Text(time),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    sleepTime = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: wakeTime,
+                decoration: InputDecoration(
+                  labelText: context.t('wakeTime'),
+                  border: OutlineInputBorder(),
+                ),
+                hint: Text(context.t('selectOption')),
+                items: timeOptions
+                    .map(
+                      (time) => DropdownMenuItem<String>(
+                        value: time,
+                        child: Text(time),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    wakeTime = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: workStartTime,
+                decoration: InputDecoration(
+                  labelText: context.t('workStart'),
+                  border: OutlineInputBorder(),
+                ),
+                hint: Text(context.t('selectOption')),
+                items: workTimeOptions
+                    .map(
+                      (time) => DropdownMenuItem<String>(
+                        value: time,
+                        child: Text(time),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    workStartTime = value;
+                  });
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return '';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: workEndTime,
+                decoration: InputDecoration(
+                  labelText: context.t('workEnd'),
+                  border: OutlineInputBorder(),
+                ),
+                hint: Text(context.t('selectOption')),
+                items: workTimeOptions
+                    .map(
+                      (time) => DropdownMenuItem<String>(
+                        value: time,
+                        child: Text(time),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    workEndTime = value;
+                  });
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return '';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: workplaceSmokingRule,
+                decoration: InputDecoration(
+                  labelText: context.t('workplaceSmoking'),
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: 'Evet',
+                    child: Text(context.t('yes')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Hayır',
+                    child: Text(context.t('no')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Sadece molalarda',
+                    child: Text(context.t('onlyBreaks')),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    workplaceSmokingRule = value!;
+                  });
+                },
+              ),
+              const SizedBox(height: 20),
+              sectionTitle(context.t('healthStatus')),
+              CheckboxListTile(
+                value: hypertension,
+                title: Text(context.t('hypertension')),
+                onChanged: (value) =>
+                    setState(() => hypertension = value ?? false),
+              ),
+              CheckboxListTile(
+                value: asthma,
+                title: Text(context.t('asthma')),
+                onChanged: (value) => setState(() => asthma = value ?? false),
+              ),
+              CheckboxListTile(
+                value: diabetes,
+                title: Text(context.t('diabetes')),
+                onChanged: (value) => setState(() => diabetes = value ?? false),
+              ),
+              CheckboxListTile(
+                value: copd,
+                title: Text(context.t('copd')),
+                onChanged: (value) => setState(() => copd = value ?? false),
+              ),
+              CheckboxListTile(
+                value: heartDisease,
+                title: Text(context.t('heartDisease')),
+                onChanged: (value) =>
+                    setState(() => heartDisease = value ?? false),
+              ),
+              const SizedBox(height: 20),
+              sectionTitle(context.t('triggerTitle')),
+              triggerTile(context.t('triggerCoffee'), 'coffee'),
+              triggerTile(context.t('triggerMeal'), 'meal'),
+              triggerTile(context.t('triggerDriving'), 'driving'),
+              triggerTile(context.t('triggerStress'), 'stress'),
+              triggerTile(context.t('triggerPhone'), 'phone'),
+              triggerTile(context.t('triggerSocial'), 'social'),
+              triggerTile(context.t('triggerAlcohol'), 'alcohol'),
+              const SizedBox(height: 20),
+              sectionTitle(context.t('stressTitle')),
+              DropdownButtonFormField<String>(
+                initialValue: stressLevel,
+                decoration: InputDecoration(
+                  labelText: context.t('stressTitle'),
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: 'Düşük',
+                    child: Text(context.t('stressLow')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Orta',
+                    child: Text(context.t('stressMedium')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Yüksek',
+                    child: Text(context.t('stressHigh')),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    stressLevel = value!;
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              sectionTitle(context.t('quitReasonTitle')),
+              DropdownButtonFormField<String>(
+                initialValue: quitReason,
+                decoration: InputDecoration(
+                  labelText: context.t('quitReason'),
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: 'Sağlık',
+                    child: Text(context.t('quitHealth')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Aile',
+                    child: Text(context.t('quitFamily')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Maddi sebepler',
+                    child: Text(context.t('quitMoney')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Çocuklar',
+                    child: Text(context.t('quitChildren')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Performans',
+                    child: Text(context.t('quitPerformance')),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    quitReason = value!;
+                  });
+                },
+              ),
+              const SizedBox(height: 25),
+              SizedBox(
+                width: double.infinity,
+                height: 60,
+                child: ElevatedButton(
+                  key: const ValueKey('survey_continue_button'),
+                  onPressed: () async {
+                    _formKey.currentState?.validate();
+                    final missingMessage = _missingRequiredFieldMessage();
+                    final saveErrorMessage = context.t('saveErrorRetry');
+
+                    if (missingMessage != null) {
+                      if (!mounted) return;
+                      _showValidationMessage(missingMessage);
+                      return;
+                    }
+
+                    try {
+                      await _saveInitialSurveyRecord();
+                    } catch (error, stackTrace) {
+                      debugPrint(
+                        '[SurveyPage] Initial survey save failed: $error',
+                      );
+                      debugPrintStack(stackTrace: stackTrace);
+                      if (!mounted) return;
+                      _showValidationMessage(saveErrorMessage);
+                      return;
+                    }
+
+                    if (!context.mounted) return;
+                    final navigator = Navigator.of(context);
+                    await navigator.push(
+                      MaterialPageRoute(
+                        builder: (_) => BreathTestPage(
+                          name: nameController.text.trim(),
+                          packsPerDay: _resolvedPacksPerDay,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    context.t('continue'),
+                    style: TextStyle(fontSize: 20),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 30),
-          ],
-        ),
+              const SizedBox(height: 30),
+            ],
+          ),
         ),
       ),
     );

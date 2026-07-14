@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../core/app_texts.dart';
 import '../main.dart';
 import '../models/survey_record.dart';
 import '../services/language_service.dart';
@@ -23,6 +22,23 @@ class _SplashPageState extends State<SplashPage> {
   @override
   void initState() {
     super.initState();
+    _routeFromSplash();
+  }
+
+  Future<void> _routeFromSplash() async {
+    final hasSavedLanguage = await LanguageService.hasSavedLanguageSelection();
+    if (!mounted) {
+      return;
+    }
+
+    if (!hasSavedLanguage) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LanguageSelectionPage()),
+      );
+      return;
+    }
+
     Timer(const Duration(milliseconds: 1800), _goNext);
   }
 
@@ -40,7 +56,9 @@ class _SplashPageState extends State<SplashPage> {
     }
 
     for (final record in records.reversed) {
-      if (record.type == 'breath_test' || record.type == 'weekly' || record.type == 'initial') {
+      if (record.type == 'breath_test' ||
+          record.type == 'weekly' ||
+          record.type == 'initial') {
         packsPerDay = record.packsPerDay;
         riskScore = record.riskScore;
         riskLevel = record.riskLevel;
@@ -124,15 +142,7 @@ class _SplashPageState extends State<SplashPage> {
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const NoSmokeLogo(size: 180, showLabel: true),
-                const SizedBox(height: 24),
-                Text(
-                  context.t('splashTagline'),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: Colors.white70),
-                ),
-              ],
+              children: [const NoSmokeLogo(size: 180, showLabel: true)],
             ),
           ),
         ),
