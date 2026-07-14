@@ -240,6 +240,7 @@ class AppTexts {
     'violationMedium': 'Orta',
     'violationLow': 'Dusuk',
     'violationTask': 'Gorev',
+    'violationSource': 'Kaynak',
     'violationTime': 'Zaman',
     'completeRegistration': 'Kaydı Tamamla',
     'registrationCompleted': 'Kayıt tamamlandı. İlk görev hazırlandı.',
@@ -580,6 +581,7 @@ class AppTexts {
     'violationMedium': 'Medium',
     'violationLow': 'Low',
     'violationTask': 'Task',
+    'violationSource': 'Source',
     'violationTime': 'Time',
     'completeRegistration': 'Complete Registration',
     'registrationCompleted':

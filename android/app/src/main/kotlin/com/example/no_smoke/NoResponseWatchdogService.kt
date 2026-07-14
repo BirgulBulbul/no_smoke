@@ -299,6 +299,7 @@ object NativeViolationStore {
                     put("id", "vio_native_${now}_${state.watchdogId}")
                     put("type", "no_response_10_min")
                     put("severity", "high")
+                    put("source", "native_direct")
                     put("taskTitle", state.taskTitle)
                     put("details", "10 minutes passed with no response to task notification.")
                     put("createdAt", formatIsoUtc(now))

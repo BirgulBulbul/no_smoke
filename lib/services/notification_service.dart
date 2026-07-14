@@ -149,6 +149,7 @@ class NotificationService {
         await storage.saveProtocolViolation(
           type: type,
           severity: 'high',
+          source: 'queued_import',
           taskTitle: taskTitle,
           details: '10 minutes passed with no response to task notification.',
           createdAt: createdAt,

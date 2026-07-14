@@ -247,6 +247,7 @@ class _HomePageState extends State<HomePage> {
       await _storageService.saveProtocolViolation(
         type: 'suspicious_behavior',
         severity: 'high',
+        source: 'app_flow',
         taskTitle: taskTitle,
         details:
             'Suspicious movement/usage detected during active task timer. Timer reset.',
@@ -307,6 +308,7 @@ class _HomePageState extends State<HomePage> {
       await _storageService.saveProtocolViolation(
         type: 'willpower_weakness',
         severity: 'medium',
+        source: 'app_flow',
         taskTitle: taskTitle,
         details: 'Task outcome marked as not completed by user.',
       );
@@ -374,6 +376,7 @@ class _HomePageState extends State<HomePage> {
       await _storageService.saveProtocolViolation(
         type: 'deferred_start',
         severity: 'medium',
+        source: 'app_flow',
         taskTitle: taskTitle,
         details: 'User deferred task start for 10 minutes.',
       );
@@ -416,6 +419,7 @@ class _HomePageState extends State<HomePage> {
       await _storageService.saveProtocolViolation(
         type: 'followup_deferred',
         severity: 'low',
+        source: 'app_flow',
         taskTitle: taskTitle,
         details: 'Follow-up response deferred for 10 minutes.',
       );
@@ -566,6 +570,7 @@ class _HomePageState extends State<HomePage> {
     await _storageService.saveProtocolViolation(
       type: 'mandatory_gate',
       severity: 'medium',
+      source: 'app_flow',
       taskTitle: taskTitle,
       details: 'Mandatory task screen displayed on app open.',
     );

@@ -41,6 +41,7 @@ class _TaskFollowUpPageState extends State<TaskFollowUpPage> {
       await _storageService.saveProtocolViolation(
         type: 'followup_failed',
         severity: 'medium',
+        source: 'app_flow',
         taskTitle: taskTitle,
         details: 'Task follow-up marked as unsuccessful.',
       );
@@ -58,6 +59,7 @@ class _TaskFollowUpPageState extends State<TaskFollowUpPage> {
     await _storageService.saveProtocolViolation(
       type: 'followup_deferred',
       severity: 'low',
+      source: 'app_flow',
       taskTitle: taskTitle,
       details: 'User deferred follow-up from dedicated follow-up screen.',
     );

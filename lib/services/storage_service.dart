@@ -42,7 +42,7 @@ class StorageService {
     final path = p.join(documentsDirectory.path, 'no_smoke.db');
     return openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE $_tableName (
@@ -196,12 +196,19 @@ class StorageService {
         id TEXT PRIMARY KEY,
         type TEXT NOT NULL,
         severity TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'app_flow',
         taskTitle TEXT,
         details TEXT NOT NULL,
         createdAt TEXT NOT NULL,
         resolved INTEGER NOT NULL
       )
     ''');
+    await _ensureTableColumn(
+      db,
+      _protocolViolationTable,
+      'source',
+      "TEXT NOT NULL DEFAULT 'app_flow'",
+    );
   }
 
   Future<void> _ensureColumn(
@@ -215,6 +222,19 @@ class StorageService {
       );
     } catch (_) {
       // Column already exists on upgraded databases.
+    }
+  }
+
+  Future<void> _ensureTableColumn(
+    Database db,
+    String table,
+    String columnName,
+    String columnType,
+  ) async {
+    try {
+      await db.execute('ALTER TABLE $table ADD COLUMN $columnName $columnType');
+    } catch (_) {
+      // Column already exists.
     }
   }
 
@@ -610,6 +630,7 @@ class StorageService {
   Future<void> saveProtocolViolation({
     required String type,
     required String severity,
+    String source = 'app_flow',
     String? taskTitle,
     required String details,
     DateTime? createdAt,
@@ -621,6 +642,7 @@ class StorageService {
       'id': 'vio_${now.microsecondsSinceEpoch}',
       'type': type,
       'severity': severity,
+      'source': source,
       'taskTitle': taskTitle,
       'details': details,
       'createdAt': now.toIso8601String(),
@@ -644,6 +666,7 @@ class StorageService {
             id: row['id'] as String,
             type: row['type'] as String,
             severity: row['severity'] as String,
+            source: (row['source'] as String?) ?? 'app_flow',
             taskTitle: row['taskTitle'] as String?,
             details: row['details'] as String,
             createdAt: DateTime.parse(row['createdAt'] as String),

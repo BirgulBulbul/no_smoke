@@ -139,6 +139,8 @@ class _ProtocolViolationsPageState extends State<ProtocolViolationsPage> {
                                     if ((row.taskTitle ?? '').trim().isNotEmpty)
                                       Text('${context.t('violationTask')}: ${row.taskTitle}'),
                                     const SizedBox(height: 4),
+                                    Text('${context.t('violationSource')}: ${row.source}'),
+                                    const SizedBox(height: 4),
                                     Text(row.details),
                                     const SizedBox(height: 4),
                                     Text(
