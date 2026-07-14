@@ -402,56 +402,61 @@ class _HomePageState extends State<HomePage> {
       }
 
       debugPrint('[CompleteRegistration] Running loadBehaviorDashboard');
-      late final dynamic behavior;
       try {
-        behavior = await _storageService.loadBehaviorDashboard();
+        await _storageService.loadBehaviorDashboard();
       } catch (error, stackTrace) {
         debugPrint('[CompleteRegistration] loadBehaviorDashboard failed: $error');
         debugPrintStack(stackTrace: stackTrace);
         _showRegistrationError('Risk analizi oluşturulamadı. Lütfen tekrar deneyin.');
         return;
       }
-      final firstTask = behavior.todaysTasks.isEmpty ? null : behavior.todaysTasks.first;
+      if (!mounted) {
+        return;
+      }
+      final firstTask = context.t('firstTaskNoSmoke15');
 
-      if (firstTask != null) {
-        debugPrint('[CompleteRegistration] Creating first task: $firstTask');
-        final createdAt = DateTime.now();
-        final followUpDelay = _resolveInitialTaskDelay(firstTask);
+      debugPrint('[CompleteRegistration] Creating first task: $firstTask');
+      final createdAt = DateTime.now();
+      const followUpDelay = Duration(minutes: 15);
+      final followUpAt = createdAt.add(followUpDelay);
 
-        try {
-          await _storageService.saveTaskResult(
-            taskTitle: firstTask,
-            taskResult: 'created',
-            completedAt: createdAt,
-          );
-          debugPrint('[CompleteRegistration] saveTaskResult(created) ok');
-        } catch (error, stackTrace) {
-          debugPrint('[CompleteRegistration] saveTaskResult(created) failed: $error');
-          debugPrintStack(stackTrace: stackTrace);
-        }
+      try {
+        await _storageService.saveTaskResult(
+          taskTitle: firstTask,
+          taskResult: 'created',
+          completedAt: createdAt,
+        );
+        debugPrint('[CompleteRegistration] saveTaskResult(created) ok');
+      } catch (error, stackTrace) {
+        debugPrint('[CompleteRegistration] saveTaskResult(created) failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
 
-        try {
-          await NotificationService.showFirstTaskTriggerNotification(
-            taskTitle: 'İlk Görev',
-            taskDescription: firstTask,
-          );
-          debugPrint('[CompleteRegistration] showFirstTaskTriggerNotification ok');
-        } catch (error, stackTrace) {
-          debugPrint('[CompleteRegistration] showFirstTaskTriggerNotification failed (non-blocking): $error');
-          debugPrintStack(stackTrace: stackTrace);
-        }
+      try {
+        await NotificationService.showTaskTimerStartedNotification(
+          taskTitle: firstTask,
+          duration: followUpDelay,
+        );
+        debugPrint('[CompleteRegistration] showTaskTimerStartedNotification ok');
+      } catch (error, stackTrace) {
+        debugPrint('[CompleteRegistration] showTaskTimerStartedNotification failed (non-blocking): $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
 
-        try {
-          // If user does not tap notification, start flow automatically after delay.
-          await NotificationService.scheduleFirstTaskTriggerNotification(
-            taskDescription: firstTask,
-            delay: followUpDelay,
-          );
-          debugPrint('[CompleteRegistration] scheduleFirstTaskTriggerNotification ok');
-        } catch (error, stackTrace) {
-          debugPrint('[CompleteRegistration] scheduleFirstTaskTriggerNotification failed (non-blocking): $error');
-          debugPrintStack(stackTrace: stackTrace);
-        }
+      try {
+        await _storageService.saveTaskFollowUp(
+          taskTitle: firstTask,
+          scheduledAt: followUpAt,
+        );
+        await NotificationService.scheduleTaskFollowUpReminder(
+          taskTitle: firstTask,
+          delay: followUpDelay,
+        );
+        _scheduleLocalFollowUp(firstTask, followUpAt);
+        debugPrint('[CompleteRegistration] task follow-up timer started (15m)');
+      } catch (error, stackTrace) {
+        debugPrint('[CompleteRegistration] task follow-up timer scheduling failed (non-blocking): $error');
+        debugPrintStack(stackTrace: stackTrace);
       }
 
       debugPrint('[CompleteRegistration] Saving completion flag');

@@ -7,6 +7,7 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../pages/breath_test_page.dart';
+import 'language_service.dart';
 import 'phone_state_service.dart';
 
 class NotificationService {
@@ -208,6 +209,7 @@ class NotificationService {
   }
 
   static Future<void> scheduleDailyBreathReminder({required String sleepTime}) async {
+    final code = await LanguageService.loadSelectedLanguageCode();
     final parts = sleepTime.split(':');
     final hour = int.tryParse(parts[0]) ?? 21;
     final minute = int.tryParse(parts[1]) ?? 0;
@@ -225,10 +227,10 @@ class NotificationService {
 
     await _plugin.zonedSchedule(
       0,
-      'Nefes Testi',
+      _text(code, 'breathReminderTitle'),
       isDriving
-          ? 'Sürüşte güvenliğiniz için hatırlatma kısa süre ertelendi.'
-          : 'Günlük nefes testi zamanı geldi.',
+        ? _text(code, 'breathReminderDriving')
+        : _text(code, 'breathReminderBody'),
       finalDate,
       const NotificationDetails(
         android: AndroidNotificationDetails(
@@ -250,6 +252,7 @@ class NotificationService {
     required String taskTitle,
     Duration delay = const Duration(minutes: 30),
   }) async {
+    final code = await LanguageService.loadSelectedLanguageCode();
     final now = tz.TZDateTime.now(tz.local);
     var fireAt = now.add(delay);
     final isDriving = await _isLikelyDrivingNow();
@@ -261,10 +264,10 @@ class NotificationService {
 
     await _plugin.zonedSchedule(
       notificationId,
-      'Görev Takibi',
+      _text(code, 'taskFollowUpTitlePush'),
       isDriving
-          ? 'Sürüş sonrası cevaplayın: Bu süre boyunca sigara içtiniz mi?'
-          : 'Bu süre boyunca sigara içtiniz mi?\n$taskTitle',
+        ? _text(code, 'taskFollowUpQuestionDriving')
+        : '${_text(code, 'taskFollowUpQuestion')}\n$taskTitle',
       fireAt,
       NotificationDetails(
         android: AndroidNotificationDetails(
@@ -302,6 +305,28 @@ class NotificationService {
     );
   }
 
+  static Future<void> showTaskTimerStartedNotification({
+    required String taskTitle,
+    required Duration duration,
+  }) async {
+    final code = await LanguageService.loadSelectedLanguageCode();
+    final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
+    await _plugin.show(
+      id,
+      _text(code, 'taskTimerStartedTitle'),
+      '${_text(code, 'taskTimerStartedBody')}\n$taskTitle\n${_text(code, 'taskTimerDuration')}: ${duration.inMinutes} ${_text(code, 'minutesShort')}.',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'task_start_channel',
+          'Task timer start',
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+    );
+  }
+
   static Future<bool> _isLikelyDrivingNow() async {
     try {
       final summary = await PhoneStateService().inferDailyStateSummary();
@@ -309,5 +334,36 @@ class NotificationService {
     } catch (_) {
       return false;
     }
+  }
+
+  static String _text(String code, String key) {
+    const tr = <String, String>{
+      'breathReminderTitle': 'Nefes Testi',
+      'breathReminderBody': 'Günlük nefes testi zamanı geldi.',
+      'breathReminderDriving': 'Sürüşte güvenliğiniz için hatırlatma kısa süre ertelendi.',
+      'taskFollowUpTitlePush': 'Görev Takibi',
+      'taskFollowUpQuestion': 'Bu süre boyunca sigara içtiniz mi?',
+      'taskFollowUpQuestionDriving': 'Sürüş sonrası cevaplayın: Bu süre boyunca sigara içtiniz mi?',
+      'taskTimerStartedTitle': 'İlk Görev',
+      'taskTimerStartedBody': '15 dakikalık görev başladı:',
+      'taskTimerDuration': 'Sayaç',
+      'minutesShort': 'dakika',
+    };
+
+    const en = <String, String>{
+      'breathReminderTitle': 'Breath Test',
+      'breathReminderBody': 'Time for your daily breath test.',
+      'breathReminderDriving': 'Reminder delayed briefly for driving safety.',
+      'taskFollowUpTitlePush': 'Task Follow-up',
+      'taskFollowUpQuestion': 'Did you smoke during this period?',
+      'taskFollowUpQuestionDriving': 'Answer after driving: Did you smoke during this period?',
+      'taskTimerStartedTitle': 'First Task',
+      'taskTimerStartedBody': 'Your 15-minute task has started:',
+      'taskTimerDuration': 'Timer',
+      'minutesShort': 'minutes',
+    };
+
+    final map = code == 'tr' ? tr : en;
+    return map[key] ?? en[key] ?? key;
   }
 }

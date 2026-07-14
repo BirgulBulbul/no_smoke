@@ -187,7 +187,7 @@ class _BreathTestPageState extends State<BreathTestPage> {
         builder: (dialogContext) {
           return AlertDialog(
             title: Text(context.t('weeklySurvey')),
-            content: const Text('Haftalık anketi şimdi yapmak ister misiniz?'),
+            content: Text(context.t('weeklySurveyPromptAsk')),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(false),

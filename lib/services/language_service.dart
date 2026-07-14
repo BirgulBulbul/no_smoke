@@ -21,6 +21,11 @@ class LanguageService {
     return supportedLanguages.containsKey(code) ? code : 'tr';
   }
 
+  static Future<bool> hasSavedLanguageSelection() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.containsKey(_languageCodeKey);
+  }
+
   static Future<Locale> loadSelectedLocale() async {
     final code = await loadSelectedLanguageCode();
     return supportedLanguages[code] ?? const Locale('tr');
