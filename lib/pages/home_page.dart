@@ -402,7 +402,15 @@ class _HomePageState extends State<HomePage> {
       }
 
       debugPrint('[CompleteRegistration] Running loadBehaviorDashboard');
-      final behavior = await _storageService.loadBehaviorDashboard();
+      late final dynamic behavior;
+      try {
+        behavior = await _storageService.loadBehaviorDashboard();
+      } catch (error, stackTrace) {
+        debugPrint('[CompleteRegistration] loadBehaviorDashboard failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        _showRegistrationError('Risk analizi oluşturulamadı. Lütfen tekrar deneyin.');
+        return;
+      }
       final firstTask = behavior.todaysTasks.isEmpty ? null : behavior.todaysTasks.first;
 
       if (firstTask != null) {
@@ -410,25 +418,52 @@ class _HomePageState extends State<HomePage> {
         final createdAt = DateTime.now();
         final followUpDelay = _resolveInitialTaskDelay(firstTask);
 
-        await _storageService.saveTaskResult(
-          taskTitle: firstTask,
-          taskResult: 'created',
-          completedAt: createdAt,
-        );
-        await NotificationService.showFirstTaskTriggerNotification(
-          taskTitle: 'İlk Görev',
-          taskDescription: firstTask,
-        );
-        // If user does not tap notification, start flow automatically after delay.
-        await NotificationService.scheduleFirstTaskTriggerNotification(
-          taskDescription: firstTask,
-          delay: followUpDelay,
-        );
+        try {
+          await _storageService.saveTaskResult(
+            taskTitle: firstTask,
+            taskResult: 'created',
+            completedAt: createdAt,
+          );
+          debugPrint('[CompleteRegistration] saveTaskResult(created) ok');
+        } catch (error, stackTrace) {
+          debugPrint('[CompleteRegistration] saveTaskResult(created) failed: $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
+
+        try {
+          await NotificationService.showFirstTaskTriggerNotification(
+            taskTitle: 'İlk Görev',
+            taskDescription: firstTask,
+          );
+          debugPrint('[CompleteRegistration] showFirstTaskTriggerNotification ok');
+        } catch (error, stackTrace) {
+          debugPrint('[CompleteRegistration] showFirstTaskTriggerNotification failed (non-blocking): $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
+
+        try {
+          // If user does not tap notification, start flow automatically after delay.
+          await NotificationService.scheduleFirstTaskTriggerNotification(
+            taskDescription: firstTask,
+            delay: followUpDelay,
+          );
+          debugPrint('[CompleteRegistration] scheduleFirstTaskTriggerNotification ok');
+        } catch (error, stackTrace) {
+          debugPrint('[CompleteRegistration] scheduleFirstTaskTriggerNotification failed (non-blocking): $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
       }
 
       debugPrint('[CompleteRegistration] Saving completion flag');
-      await _storageService.saveInitialRegistrationCompleted(true);
-      await _storageService.saveIsProfileCompleted(true);
+      try {
+        await _storageService.saveInitialRegistrationCompleted(true);
+        await _storageService.saveIsProfileCompleted(true);
+      } catch (error, stackTrace) {
+        debugPrint('[CompleteRegistration] save registration flags failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        _showRegistrationError('Kayıt bayrağı kaydedilemedi. Lütfen tekrar deneyin.');
+        return;
+      }
       debugPrint('[CompleteRegistration] Refreshing Home metrics');
       await _loadHomeMetrics();
 
