@@ -8,8 +8,10 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../pages/breath_test_page.dart';
+import 'android_watchdog_service.dart';
 import 'language_service.dart';
 import 'phone_state_service.dart';
+import 'storage_service.dart';
 
 @pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse response) {
@@ -124,6 +126,37 @@ class NotificationService {
           IOSFlutterLocalNotificationsPlugin
         >()
         ?.requestPermissions(alert: true, badge: true, sound: true);
+
+    await _syncWatchdogViolationsFromNative();
+  }
+
+  static Future<void> _syncWatchdogViolationsFromNative() async {
+    try {
+      final rows = await AndroidWatchdogService.consumeViolations();
+      if (rows.isEmpty) {
+        return;
+      }
+
+      final storage = StorageService();
+      for (final row in rows) {
+        final type = row['type']?.toString() ?? 'no_response_10_min';
+        final taskTitle = row['taskTitle']?.toString();
+        final createdAtMillis = (row['createdAtMillis'] as num?)?.toInt();
+        final createdAt = createdAtMillis == null
+            ? DateTime.now()
+            : DateTime.fromMillisecondsSinceEpoch(createdAtMillis);
+
+        await storage.saveProtocolViolation(
+          type: type,
+          severity: 'high',
+          taskTitle: taskTitle,
+          details: '10 minutes passed with no response to task notification.',
+          createdAt: createdAt,
+        );
+      }
+    } catch (_) {
+      // Keep notification flow resilient even if native watchdog sync fails.
+    }
   }
 
   static Future<bool> ensureNotificationPermission() async {
@@ -228,6 +261,11 @@ class NotificationService {
     }
 
     if (type == _typeTaskStart || type == _typeTaskFollowUp) {
+      final watchdogId = payload['watchdogId']?.trim() ?? '';
+      if (watchdogId.isNotEmpty) {
+        unawaited(AndroidWatchdogService.acknowledgeWatchdog(watchdogId));
+      }
+
       final actionId = response.actionId;
       final event = {
         'type': type ?? '',
@@ -392,6 +430,8 @@ class NotificationService {
     final code = await LanguageService.loadSelectedLanguageCode();
     final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
     final reminderId = _deriveReminderId(id);
+    final watchdogId = 'wdg_$id';
+    final dueAt = DateTime.now().add(_unansweredReminderDelay);
     await _plugin.show(
       id,
       _text(code, 'disciplineCommand'),
@@ -435,7 +475,14 @@ class NotificationService {
         'type': _typeTaskStart,
         'taskTitle': taskTitle,
         'reminderId': '$reminderId',
+        'watchdogId': watchdogId,
       }),
+    );
+
+    await AndroidWatchdogService.startWatchdog(
+      taskTitle: taskTitle,
+      watchdogId: watchdogId,
+      dueAt: dueAt,
     );
 
     final reminderAt = tz.TZDateTime.now(
@@ -459,6 +506,8 @@ class NotificationService {
     final fireAt = now.add(delay);
     final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
     final reminderId = _deriveReminderId(id);
+    final watchdogId = 'wdg_$id';
+    final dueAt = fireAt.add(_unansweredReminderDelay);
     await _plugin.zonedSchedule(
       id,
       _text(code, 'disciplineCommand'),
@@ -506,7 +555,14 @@ class NotificationService {
         'type': _typeTaskStart,
         'taskTitle': taskDescription,
         'reminderId': '$reminderId',
+        'watchdogId': watchdogId,
       }),
+    );
+
+    await AndroidWatchdogService.startWatchdog(
+      taskTitle: taskDescription,
+      watchdogId: watchdogId,
+      dueAt: dueAt,
     );
 
     await _scheduleUnansweredTaskUpdateReminder(

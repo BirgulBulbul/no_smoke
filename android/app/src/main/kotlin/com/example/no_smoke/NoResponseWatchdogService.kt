@@ -1,0 +1,271 @@
+package com.example.no_smoke
+
+import android.app.AlarmManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+
+class NoResponseWatchdogService : Service() {
+    private val handler = Handler(Looper.getMainLooper())
+    private val checker = object : Runnable {
+        override fun run() {
+            val state = WatchdogStore.loadActive(this@NoResponseWatchdogService)
+            if (state != null && !state.acknowledged && System.currentTimeMillis() >= state.dueAtMillis) {
+                WatchdogViolationNotifier.triggerNoResponseViolation(this@NoResponseWatchdogService, state)
+                WatchdogStore.clearActive(this@NoResponseWatchdogService)
+                stopSelf()
+                return
+            }
+            handler.postDelayed(this, 15000)
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_START -> {
+                val taskTitle = intent.getStringExtra(EXTRA_TASK_TITLE).orEmpty()
+                val watchdogId = intent.getStringExtra(EXTRA_WATCHDOG_ID).orEmpty()
+                val dueAtMillis = intent.getLongExtra(EXTRA_DUE_AT_MILLIS, 0L)
+                if (taskTitle.isNotBlank() && watchdogId.isNotBlank() && dueAtMillis > 0L) {
+                    WatchdogStore.saveActive(
+                        context = this,
+                        state = WatchdogState(
+                            watchdogId = watchdogId,
+                            taskTitle = taskTitle,
+                            dueAtMillis = dueAtMillis,
+                            acknowledged = false,
+                        ),
+                    )
+                    scheduleAlarmBackup(watchdogId, dueAtMillis)
+                    ensureForeground(taskTitle)
+                    handler.removeCallbacks(checker)
+                    handler.post(checker)
+                }
+            }
+            ACTION_ACK -> {
+                val watchdogId = intent.getStringExtra(EXTRA_WATCHDOG_ID).orEmpty()
+                val state = WatchdogStore.loadActive(this)
+                if (state != null && state.watchdogId == watchdogId) {
+                    WatchdogStore.markAcknowledged(this)
+                }
+                WatchdogStore.clearActive(this)
+                handler.removeCallbacks(checker)
+                stopSelf()
+            }
+            else -> {
+                val state = WatchdogStore.loadActive(this)
+                if (state != null && !state.acknowledged) {
+                    ensureForeground(state.taskTitle)
+                    handler.removeCallbacks(checker)
+                    handler.post(checker)
+                }
+            }
+        }
+
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacks(checker)
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun ensureForeground(taskTitle: String) {
+        createChannelIfNeeded()
+        val notification = NotificationCompat.Builder(this, FOREGROUND_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("No Smoke Watchdog")
+            .setContentText("10 dakika yanit takibi aktif: $taskTitle")
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        startForeground(FOREGROUND_NOTIFICATION_ID, notification)
+    }
+
+    private fun scheduleAlarmBackup(watchdogId: String, dueAtMillis: Long) {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val receiverIntent = Intent(this, WatchdogTimeoutReceiver::class.java).apply {
+            action = WatchdogTimeoutReceiver.ACTION_TIMEOUT
+            putExtra(EXTRA_WATCHDOG_ID, watchdogId)
+        }
+        val pending = PendingIntent.getBroadcast(
+            this,
+            watchdogId.hashCode(),
+            receiverIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, dueAtMillis, pending)
+    }
+
+    private fun createChannelIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return
+        }
+        val manager = getSystemService(NotificationManager::class.java)
+        val existing = manager.getNotificationChannel(FOREGROUND_CHANNEL_ID)
+        if (existing != null) {
+            return
+        }
+        val channel = NotificationChannel(
+            FOREGROUND_CHANNEL_ID,
+            "No Smoke Watchdog",
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = "No response 10-minute watchdog foreground service"
+        }
+        manager.createNotificationChannel(channel)
+    }
+
+    companion object {
+        const val ACTION_START = "com.example.no_smoke.watchdog.START"
+        const val ACTION_ACK = "com.example.no_smoke.watchdog.ACK"
+        const val EXTRA_TASK_TITLE = "extra_task_title"
+        const val EXTRA_WATCHDOG_ID = "extra_watchdog_id"
+        const val EXTRA_DUE_AT_MILLIS = "extra_due_at_millis"
+
+        const val FOREGROUND_CHANNEL_ID = "watchdog_foreground_channel"
+        const val VIOLATION_CHANNEL_ID = "watchdog_violation_channel"
+        const val FOREGROUND_NOTIFICATION_ID = 73001
+
+        fun start(context: Context, taskTitle: String, watchdogId: String, dueAtMillis: Long) {
+            val intent = Intent(context, NoResponseWatchdogService::class.java).apply {
+                action = ACTION_START
+                putExtra(EXTRA_TASK_TITLE, taskTitle)
+                putExtra(EXTRA_WATCHDOG_ID, watchdogId)
+                putExtra(EXTRA_DUE_AT_MILLIS, dueAtMillis)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun acknowledge(context: Context, watchdogId: String) {
+            val intent = Intent(context, NoResponseWatchdogService::class.java).apply {
+                action = ACTION_ACK
+                putExtra(EXTRA_WATCHDOG_ID, watchdogId)
+            }
+            context.startService(intent)
+        }
+    }
+}
+
+data class WatchdogState(
+    val watchdogId: String,
+    val taskTitle: String,
+    val dueAtMillis: Long,
+    val acknowledged: Boolean,
+)
+
+object WatchdogStore {
+    private const val PREFS = "no_smoke_watchdog"
+    private const val KEY_ID = "active_id"
+    private const val KEY_TITLE = "active_title"
+    private const val KEY_DUE_AT = "active_due_at"
+    private const val KEY_ACK = "active_ack"
+    private const val KEY_VIOLATIONS = "queued_violations"
+
+    fun saveActive(context: Context, state: WatchdogState) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_ID, state.watchdogId)
+            .putString(KEY_TITLE, state.taskTitle)
+            .putLong(KEY_DUE_AT, state.dueAtMillis)
+            .putBoolean(KEY_ACK, state.acknowledged)
+            .apply()
+    }
+
+    fun markAcknowledged(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_ACK, true)
+            .apply()
+    }
+
+    fun loadActive(context: Context): WatchdogState? {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString(KEY_ID, null) ?: return null
+        val title = prefs.getString(KEY_TITLE, null) ?: return null
+        val due = prefs.getLong(KEY_DUE_AT, 0L)
+        if (due <= 0L) {
+            return null
+        }
+        val ack = prefs.getBoolean(KEY_ACK, false)
+        return WatchdogState(id, title, due, ack)
+    }
+
+    fun clearActive(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_ID)
+            .remove(KEY_TITLE)
+            .remove(KEY_DUE_AT)
+            .remove(KEY_ACK)
+            .apply()
+    }
+
+    fun enqueueViolation(context: Context, payload: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(KEY_VIOLATIONS, emptySet())?.toMutableSet() ?: mutableSetOf()
+        current.add(payload)
+        prefs.edit().putStringSet(KEY_VIOLATIONS, current).apply()
+    }
+
+    fun drainViolations(context: Context): List<String> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val items = prefs.getStringSet(KEY_VIOLATIONS, emptySet())?.toList() ?: emptyList()
+        prefs.edit().remove(KEY_VIOLATIONS).apply()
+        return items
+    }
+}
+
+object WatchdogViolationNotifier {
+    fun triggerNoResponseViolation(context: Context, state: WatchdogState) {
+        createViolationChannelIfNeeded(context)
+
+        val payload = "no_response_10_min|${state.taskTitle}|${System.currentTimeMillis()}"
+        WatchdogStore.enqueueViolation(context, payload)
+
+        val id = state.watchdogId.hashCode().let { if (it < 0) -it else it }
+        val notification = NotificationCompat.Builder(context, NoResponseWatchdogService.VIOLATION_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("No Smoke Ihlal")
+            .setContentText("10 dakika yanit yok. Gorev ihlali kaydedildi: ${state.taskTitle}")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setAutoCancel(true)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(id, notification)
+    }
+
+    private fun createViolationChannelIfNeeded(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return
+        }
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val existing = manager.getNotificationChannel(NoResponseWatchdogService.VIOLATION_CHANNEL_ID)
+        if (existing != null) {
+            return
+        }
+        val channel = NotificationChannel(
+            NoResponseWatchdogService.VIOLATION_CHANNEL_ID,
+            "No Smoke Ihlal Uyarilari",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "10 dakika yanitsiz gorev ihlali"
+        }
+        manager.createNotificationChannel(channel)
+    }
+}
