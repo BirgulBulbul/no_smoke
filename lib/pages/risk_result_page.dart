@@ -28,16 +28,29 @@ class RiskResultPage extends StatelessWidget {
   });
 
   Color getRiskColor() {
-    switch (riskLevel) {
-      case 'KRİTİK':
-        return Colors.red;
-      case 'YÜKSEK':
-        return Colors.orange;
-      case 'ORTA':
-        return Colors.yellow;
-      default:
-        return Colors.green;
+    if (riskScore >= 80) {
+      return Colors.red;
     }
+    if (riskScore >= 60) {
+      return Colors.orange;
+    }
+    if (riskScore >= 40) {
+      return Colors.yellow;
+    }
+    return Colors.green;
+  }
+
+  String _localizedRiskLabel(BuildContext context) {
+    if (riskScore >= 80) {
+      return context.t('riskCritical');
+    }
+    if (riskScore >= 60) {
+      return context.t('riskHigh');
+    }
+    if (riskScore >= 40) {
+      return context.t('riskMedium');
+    }
+    return context.t('riskLow');
   }
 
   int getTaskCount() {
@@ -111,10 +124,7 @@ class RiskResultPage extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            flex: 3,
-            child: Text(value),
-          ),
+          Expanded(flex: 3, child: Text(value)),
         ],
       ),
     );
@@ -122,12 +132,13 @@ class RiskResultPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final usageDuration = _getUsageDuration().replaceAll('{days}', context.t('days'));
+    final usageDuration = _getUsageDuration().replaceAll(
+      '{days}',
+      context.t('days'),
+    );
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(context.t('riskAnalysis')),
-      ),
+      appBar: AppBar(title: Text(context.t('riskAnalysis'))),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -135,10 +146,7 @@ class RiskResultPage extends StatelessWidget {
             const SizedBox(height: 20),
             Text(
               '${context.t('hello')} $name',
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 25),
             Container(
@@ -151,7 +159,7 @@ class RiskResultPage extends StatelessWidget {
               child: Column(
                 children: [
                   Text(
-                    riskLevel,
+                    _localizedRiskLabel(context),
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -161,10 +169,7 @@ class RiskResultPage extends StatelessWidget {
                   const SizedBox(height: 10),
                   Text(
                     '$riskScore / 100',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      color: Colors.black,
-                    ),
+                    style: const TextStyle(fontSize: 24, color: Colors.black),
                   ),
                 ],
               ),
@@ -212,12 +217,27 @@ class RiskResultPage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _buildInfoRow(context.t('subscriptionType'), context.t(_getSubscriptionType())),
-                    _buildInfoRow(context.t('subscriptionStart'), _formatDate(behaviorProfile?.subscriptionStartDate)),
-                    _buildInfoRow(context.t('subscriptionEnd'), _formatDate(behaviorProfile?.subscriptionEndDate)),
+                    _buildInfoRow(
+                      context.t('subscriptionType'),
+                      context.t(_getSubscriptionType()),
+                    ),
+                    _buildInfoRow(
+                      context.t('subscriptionStart'),
+                      _formatDate(behaviorProfile?.subscriptionStartDate),
+                    ),
+                    _buildInfoRow(
+                      context.t('subscriptionEnd'),
+                      _formatDate(behaviorProfile?.subscriptionEndDate),
+                    ),
                     _buildInfoRow(context.t('totalUsage'), usageDuration),
-                    _buildInfoRow(context.t('trialStatus'), context.t(_getTrialStatus())),
-                    _buildInfoRow(context.t('premiumActive'), context.t(_getPremiumStatus())),
+                    _buildInfoRow(
+                      context.t('trialStatus'),
+                      context.t(_getTrialStatus()),
+                    ),
+                    _buildInfoRow(
+                      context.t('premiumActive'),
+                      context.t(_getPremiumStatus()),
+                    ),
                   ],
                 ),
               ),
@@ -245,19 +265,20 @@ class RiskResultPage extends StatelessWidget {
                     final adjustedRiskHigh = context.t('riskHigh');
                     final adjustedRiskMedium = context.t('riskMedium');
                     final adjustedRiskLow = context.t('riskLow');
-                    final adjustedRiskScore = await storage.calculateAdjustedRiskScore(
-                      baseScore: riskScore,
-                      exhaleSeconds: exhaleTestSeconds,
-                      inhaleSeconds: inhaleTestSeconds,
-                    );
+                    final adjustedRiskScore = await storage
+                        .calculateAdjustedRiskScore(
+                          baseScore: riskScore,
+                          exhaleSeconds: exhaleTestSeconds,
+                          inhaleSeconds: inhaleTestSeconds,
+                        );
                     if (!context.mounted) return;
                     final adjustedRiskLevel = adjustedRiskScore >= 80
                         ? adjustedRiskCritical
                         : adjustedRiskScore >= 60
-                            ? adjustedRiskHigh
-                            : adjustedRiskScore >= 40
-                                ? adjustedRiskMedium
-                                : adjustedRiskLow;
+                        ? adjustedRiskHigh
+                        : adjustedRiskScore >= 40
+                        ? adjustedRiskMedium
+                        : adjustedRiskLow;
                     final currentRecord = SurveyRecord(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
                       completedAt: DateTime.now(),
@@ -280,8 +301,10 @@ class RiskResultPage extends StatelessWidget {
                         packsPerDay: packsPerDay,
                         firstCigaretteRange: 'unknown',
                         smokeFreeRange: 'unknown',
-                        consecutiveSmokingHabit: currentRecord.consecutiveSmokingHabit ?? 'Hayır',
-                        consecutiveSmokingCount: currentRecord.consecutiveSmokingCount,
+                        consecutiveSmokingHabit:
+                            currentRecord.consecutiveSmokingHabit ?? 'Hayır',
+                        consecutiveSmokingCount:
+                            currentRecord.consecutiveSmokingCount,
                         triggers: const [],
                         healthConditions: const [],
                         profession: 'Belirtilmedi',
@@ -306,14 +329,18 @@ class RiskResultPage extends StatelessWidget {
                       (route) => false,
                     );
                   } catch (error, stackTrace) {
-                    debugPrint('[RiskResultPage] Failed to save result/continue: $error');
+                    debugPrint(
+                      '[RiskResultPage] Failed to save result/continue: $error',
+                    );
                     debugPrintStack(stackTrace: stackTrace);
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context)
                       ..hideCurrentSnackBar()
                       ..showSnackBar(
                         const SnackBar(
-                          content: Text('Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.'),
+                          content: Text(
+                            'Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.',
+                          ),
                         ),
                       );
                   }

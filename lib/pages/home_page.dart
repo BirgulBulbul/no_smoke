@@ -572,6 +572,22 @@ class _HomePageState extends State<HomePage> {
         : context.t('breathComparedAverageStable');
   }
 
+  String _localizedRiskLabel() {
+    final score = _adaptiveRiskScore == 0
+        ? widget.riskScore
+        : _adaptiveRiskScore;
+    if (score >= 80) {
+      return context.t('riskCritical');
+    }
+    if (score >= 60) {
+      return context.t('riskHigh');
+    }
+    if (score >= 40) {
+      return context.t('riskMedium');
+    }
+    return context.t('riskLow');
+  }
+
   void _showRegistrationError(String message) {
     if (!mounted) {
       return;
@@ -795,7 +811,7 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 16),
               Text(
-                '${context.t('riskLevel')}: ${widget.riskLevel}',
+                '${context.t('riskLevel')}: ${_localizedRiskLabel()}',
                 style: const TextStyle(fontSize: 18),
               ),
               const SizedBox(height: 8),
