@@ -228,6 +228,8 @@ class AppTexts {
     'breathComparedAverageStable': 'Ortalamaya gore belirgin degisim yok.',
     'completeRegistration': 'Kaydı Tamamla',
     'registrationCompleted': 'Kayıt tamamlandı. İlk görev hazırlandı.',
+    'notificationPermissionRequired':
+        'Ilk gorevlendirmeyi alabilmek icin bildirim iznini acin.',
     'firstTaskNoSmoke15': '15 dakika sigara içmeyin.',
     'backToStart': 'Başa Dön',
     'weeklySurvey': 'Haftalık Anket',
@@ -550,6 +552,8 @@ class AppTexts {
     'completeRegistration': 'Complete Registration',
     'registrationCompleted':
         'Registration completed. Your first task is ready.',
+    'notificationPermissionRequired':
+        'Enable notification permission to receive your first assignment.',
     'firstTaskNoSmoke15': 'Do not smoke for 15 minutes.',
     'backToStart': 'Back to Start',
     'weeklySurvey': 'Weekly Survey',

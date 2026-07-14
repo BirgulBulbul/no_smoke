@@ -133,6 +133,45 @@ class NotificationService {
         ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
+  static Future<bool> ensureNotificationPermission() async {
+    bool enabled = true;
+
+    try {
+      final androidPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      if (androidPlugin != null) {
+        final granted = await androidPlugin.requestNotificationsPermission();
+        final isEnabled = await androidPlugin.areNotificationsEnabled();
+        enabled = (granted ?? true) && (isEnabled ?? true);
+      }
+    } catch (_) {
+      // Keep best-effort behavior on unsupported devices.
+    }
+
+    try {
+      final iosPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >();
+      if (iosPlugin != null) {
+        final iosGranted =
+            await iosPlugin.requestPermissions(
+              alert: true,
+              badge: true,
+              sound: true,
+            ) ??
+            true;
+        enabled = enabled && iosGranted;
+      }
+    } catch (_) {
+      // Keep best-effort behavior on unsupported devices.
+    }
+
+    return enabled;
+  }
+
   static Future<AndroidScheduleMode> _resolveAndroidScheduleMode() async {
     final androidPlugin = _plugin
         .resolvePlatformSpecificImplementation<

@@ -806,12 +806,27 @@ class _HomePageState extends State<HomePage> {
       }
 
       try {
+        final permissionGranted =
+            await NotificationService.ensureNotificationPermission();
+        if (!permissionGranted && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(context.t('notificationPermissionRequired')),
+            ),
+          );
+        }
+
+        await NotificationService.showFirstTaskTriggerNotification(
+          taskTitle: context.t('taskStartTitle'),
+          taskDescription: firstTask,
+        );
+
         await NotificationService.scheduleFirstTaskTriggerNotification(
           taskDescription: firstTask,
           delay: followUpDelay,
         );
         debugPrint(
-          '[CompleteRegistration] first task notification scheduled (5m)',
+          '[CompleteRegistration] first task notification shown now + scheduled (5m)',
         );
       } catch (error, stackTrace) {
         debugPrint(
