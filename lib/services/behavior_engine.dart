@@ -449,8 +449,19 @@ class BehaviorEngine {
   List<String> generateAdaptiveTasks({
     required int riskScore,
     required Map<String, double> taskSuccessRates,
+    bool isFirstProfile = false,
     int count = 3,
   }) {
+    if (isFirstProfile) {
+      if (riskScore >= 70) {
+        return const ['İlk sigaranızı 15 dakika geciktirin.'];
+      }
+      if (riskScore >= 40) {
+        return const ['Bugün 1 sigarayı atlamayı deneyin.'];
+      }
+      return const ['İlk sigaranızı 60 dakika geciktirin.'];
+    }
+
     final difficulty = chooseTaskDifficulty(riskScore);
     final pool = difficulty == 'easy'
         ? _easyTasks
@@ -478,6 +489,43 @@ class BehaviorEngine {
       }
     }
     return selected.toList();
+  }
+
+  int calculateProfileRiskAdjustment({
+    required String? profession,
+    required String? sleepTime,
+    required String? wakeTime,
+    required List<String> healthConditions,
+    required String packsPerDay,
+    required String? consecutiveHabit,
+    required String? consecutiveCount,
+    required bool hasBreathTests,
+  }) {
+    var adjustment = 0;
+
+    final normalizedProfession = _normalizeText(profession ?? '');
+    if (normalizedProfession.contains('Saglik') ||
+        normalizedProfession.contains('Isci') ||
+        normalizedProfession.contains('Esnaf')) {
+      adjustment += 2;
+    }
+
+    if (_hasShortSleepWindow(sleepTime: sleepTime, wakeTime: wakeTime)) {
+      adjustment += 3;
+    }
+
+    adjustment += min(healthConditions.length, 4) * 2;
+    adjustment += calculatePackRiskContribution(packsPerDay) ~/ 10;
+    adjustment += calculateConsecutiveSmokingScore(
+      habit: consecutiveHabit,
+      count: consecutiveCount,
+    ) ~/ 5;
+
+    if (!hasBreathTests) {
+      adjustment += 6;
+    }
+
+    return adjustment;
   }
 
   AdaptivePlan buildAdaptivePlan180({
@@ -902,5 +950,34 @@ class BehaviorEngine {
     final activeCount = recent.where((item) => item.activityState != 'idle').length;
     final activityRatio = activeCount / recent.length;
     return (activityRatio * 12).round();
+  }
+
+  bool _hasShortSleepWindow({required String? sleepTime, required String? wakeTime}) {
+    if (sleepTime == null || wakeTime == null) {
+      return false;
+    }
+
+    final sleepParts = sleepTime.split(':');
+    final wakeParts = wakeTime.split(':');
+    if (sleepParts.length != 2 || wakeParts.length != 2) {
+      return false;
+    }
+
+    final sleepHour = int.tryParse(sleepParts[0]);
+    final sleepMinute = int.tryParse(sleepParts[1]);
+    final wakeHour = int.tryParse(wakeParts[0]);
+    final wakeMinute = int.tryParse(wakeParts[1]);
+    if (sleepHour == null || sleepMinute == null || wakeHour == null || wakeMinute == null) {
+      return false;
+    }
+
+    final sleepTotal = sleepHour * 60 + sleepMinute;
+    var wakeTotal = wakeHour * 60 + wakeMinute;
+    if (wakeTotal <= sleepTotal) {
+      wakeTotal += 24 * 60;
+    }
+
+    final duration = wakeTotal - sleepTotal;
+    return duration < 6 * 60;
   }
 }

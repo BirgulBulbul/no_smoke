@@ -4,6 +4,7 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../pages/breath_test_page.dart';
+import 'phone_state_service.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
@@ -36,14 +37,21 @@ class NotificationService {
     final now = tz.TZDateTime.now(tz.local);
     var scheduledDate = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
     scheduledDate = scheduledDate.subtract(const Duration(minutes: 45));
-    final finalDate = scheduledDate.isBefore(now)
+    var finalDate = scheduledDate.isBefore(now)
         ? scheduledDate.add(const Duration(days: 1))
         : scheduledDate;
+
+    final isDriving = await _isLikelyDrivingNow();
+    if (isDriving) {
+      finalDate = finalDate.add(const Duration(minutes: 20));
+    }
 
     await _plugin.zonedSchedule(
       0,
       'Nefes Testi',
-      'Günlük nefes testi zamanı geldi.',
+      isDriving
+          ? 'Sürüşte güvenliğiniz için hatırlatma kısa süre ertelendi.'
+          : 'Günlük nefes testi zamanı geldi.',
       finalDate,
       const NotificationDetails(
         android: AndroidNotificationDetails(
@@ -58,5 +66,48 @@ class NotificationService {
       matchDateTimeComponents: DateTimeComponents.time,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
     );
+  }
+
+  static Future<void> scheduleTaskFollowUpReminder({
+    required String taskTitle,
+    Duration delay = const Duration(minutes: 30),
+  }) async {
+    final now = tz.TZDateTime.now(tz.local);
+    var fireAt = now.add(delay);
+    final isDriving = await _isLikelyDrivingNow();
+    if (isDriving) {
+      fireAt = fireAt.add(const Duration(minutes: 20));
+    }
+
+    final notificationId = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
+
+    await _plugin.zonedSchedule(
+      notificationId,
+      'Görev Takibi',
+      isDriving
+          ? 'Sürüş bitince görevi değerlendirin: $taskTitle'
+          : 'Görev sonucu hazır mı? $taskTitle',
+      fireAt,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'task_followup_channel',
+          'Görev takip hatırlatıcı',
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  }
+
+  static Future<bool> _isLikelyDrivingNow() async {
+    try {
+      final summary = await PhoneStateService().inferDailyStateSummary();
+      return summary['drivingPrediction'] == 'driving';
+    } catch (_) {
+      return false;
+    }
   }
 }

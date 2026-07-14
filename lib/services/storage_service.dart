@@ -21,7 +21,9 @@ class StorageService {
   static const _languageHistoryTable = 'language_history';
   static const _sensorUsageTable = 'sensor_usage_events';
   static const _behaviorSnapshotTable = 'behavior_snapshots';
+  static const _taskFollowUpTable = 'task_followups';
   static const _behaviorDirtyKey = 'behavior_dirty';
+  static const _registrationCompletedKey = 'registration_completed';
   static const _surveyTypes = {'initial', 'weekly'};
   final BehaviorEngine _behaviorEngine = BehaviorEngine();
   Database? _database;
@@ -36,7 +38,7 @@ class StorageService {
     final path = p.join(documentsDirectory.path, 'no_smoke.db');
     return openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE $_tableName (
@@ -63,6 +65,7 @@ class StorageService {
         await _ensureLanguageHistoryTable(db);
         await _ensureSensorUsageTable(db);
         await _ensureBehaviorSnapshotTable(db);
+        await _ensureTaskFollowUpTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         await _ensureColumn(db, 'packsPerDay', 'TEXT');
@@ -76,6 +79,7 @@ class StorageService {
         await _ensureLanguageHistoryTable(db);
         await _ensureSensorUsageTable(db);
         await _ensureBehaviorSnapshotTable(db);
+        await _ensureTaskFollowUpTable(db);
       },
     );
   }
@@ -168,6 +172,18 @@ class StorageService {
     ''');
   }
 
+  Future<void> _ensureTaskFollowUpTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_taskFollowUpTable (
+        id TEXT PRIMARY KEY,
+        taskTitle TEXT NOT NULL,
+        scheduledAt TEXT NOT NULL,
+        status TEXT NOT NULL,
+        createdAt TEXT NOT NULL
+      )
+    ''');
+  }
+
   Future<void> _ensureColumn(Database db, String columnName, String columnType) async {
     try {
       await db.execute('ALTER TABLE $_tableName ADD COLUMN $columnName $columnType');
@@ -251,6 +267,29 @@ class StorageService {
       final parsed = (jsonDecode(raw) as List<dynamic>).map((item) => item.toString()).toList();
       result[recordId] = parsed;
     }
+    return result;
+  }
+
+  Future<Map<String, Map<String, dynamic>>> loadSurveyContextByRecordId() async {
+    final db = await database;
+    final rows = await db.query(_surveyDetailsTable);
+    final result = <String, Map<String, dynamic>>{};
+
+    for (final row in rows) {
+      final recordId = row['recordId'] as String;
+      final healthRaw = row['healthJson'] as String?;
+      final healthConditions = healthRaw == null || healthRaw.isEmpty
+          ? <String>[]
+          : (jsonDecode(healthRaw) as List<dynamic>).map((item) => item.toString()).toList();
+
+      result[recordId] = {
+        'profession': row['profession'] as String?,
+        'sleepTime': row['sleepTime'] as String?,
+        'wakeTime': row['wakeTime'] as String?,
+        'healthConditions': healthConditions,
+      };
+    }
+
     return result;
   }
 
@@ -421,6 +460,55 @@ class StorageService {
     await markBehaviorDirty();
   }
 
+  Future<void> saveTaskFollowUp({
+    required String taskTitle,
+    required DateTime scheduledAt,
+  }) async {
+    final db = await database;
+    final now = DateTime.now();
+    await db.insert(
+      _taskFollowUpTable,
+      {
+        'id': 'followup_${now.microsecondsSinceEpoch}',
+        'taskTitle': taskTitle,
+        'scheduledAt': scheduledAt.toIso8601String(),
+        'status': 'pending',
+        'createdAt': now.toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> loadPendingTaskFollowUps() async {
+    final db = await database;
+    final rows = await db.query(
+      _taskFollowUpTable,
+      where: 'status = ?',
+      whereArgs: ['pending'],
+      orderBy: 'scheduledAt ASC',
+    );
+
+    return rows
+        .map((row) => {
+              'id': row['id'] as String,
+              'taskTitle': row['taskTitle'] as String,
+              'scheduledAt': DateTime.parse(row['scheduledAt'] as String),
+              'status': row['status'] as String,
+              'createdAt': DateTime.parse(row['createdAt'] as String),
+            })
+        .toList();
+  }
+
+  Future<void> resolveTaskFollowUpByTitle(String taskTitle) async {
+    final db = await database;
+    await db.update(
+      _taskFollowUpTable,
+      {'status': 'resolved'},
+      where: 'taskTitle = ? AND status = ?',
+      whereArgs: [taskTitle, 'pending'],
+    );
+  }
+
   Future<Map<String, String>> loadConsecutiveSmokingSummary() async {
     final records = await _loadRelevantSurveyRecords();
     if (records.isEmpty) {
@@ -479,6 +567,20 @@ class StorageService {
 
   Future<void> saveSleepTime(String sleepTime) async {
     await saveSetting('sleep_time', sleepTime);
+  }
+
+  Future<void> saveInitialRegistrationCompleted(bool completed) async {
+    await saveSetting(_registrationCompletedKey, completed ? '1' : '0');
+  }
+
+  Future<bool> loadInitialRegistrationCompleted() async {
+    final value = await loadSetting(_registrationCompletedKey);
+    if (value != null) {
+      return value == '1';
+    }
+
+    final snapshot = await loadLatestBehaviorSnapshot();
+    return snapshot != null;
   }
 
   Future<String?> loadSleepTime() async {
@@ -611,8 +713,11 @@ class StorageService {
       }
     }
 
+    final existingSnapshot = await loadLatestBehaviorSnapshot();
+
     final records = await loadSurveyHistory();
     final triggerMap = await loadTriggerMapByRecordId();
+    final contextMap = await loadSurveyContextByRecordId();
     final sensorEvents = await loadRecentSensorUsage();
     final taskHistory = await loadTaskHistory();
 
@@ -645,20 +750,39 @@ class StorageService {
     final consecutiveTrend = _behaviorEngine.evaluateConsecutiveSmokingTrendFromRecords(records);
     final baseRisk = records.isEmpty ? 40 : records.last.riskScore;
 
-    final dynamicRisk = _behaviorEngine.calculateDynamicRiskScore(
+    final latestSurvey = surveyRecords.isNotEmpty ? surveyRecords.last : null;
+    final latestContext = latestSurvey == null ? null : contextMap[latestSurvey.id];
+    final profileAdjustment = _behaviorEngine.calculateProfileRiskAdjustment(
+      profession: latestContext?['profession'] as String?,
+      sleepTime: latestContext?['sleepTime'] as String?,
+      wakeTime: latestContext?['wakeTime'] as String?,
+      healthConditions:
+          (latestContext?['healthConditions'] as List<String>?) ?? const <String>[],
+      packsPerDay: latestSurvey?.packsPerDay ?? '1 paketten az',
+      consecutiveHabit: latestSurvey?.consecutiveSmokingHabit,
+      consecutiveCount: latestSurvey?.consecutiveSmokingCount,
+      hasBreathTests: breathRecords.isNotEmpty,
+    );
+
+    final dynamicRisk = (_behaviorEngine.calculateDynamicRiskScore(
       baseRiskScore: baseRisk,
       smokingTrend: smokingTrend,
       breathTrend: breathTrend,
       consecutiveTrend: consecutiveTrend,
       riskyTriggers: riskyTriggers,
       riskyHours: riskyHours,
-    );
+    ) + profileAdjustment)
+        .clamp(0, 100);
+
+    final isFirstProfile =
+        existingSnapshot == null && surveyRecords.any((record) => record.type == 'initial') && breathRecords.isNotEmpty;
 
     final taskRates = _behaviorEngine.calculateTaskSuccessRateMap(taskHistory);
     final todaysTasks = _behaviorEngine.generateAdaptiveTasks(
       riskScore: dynamicRisk,
       taskSuccessRates: taskRates,
-      count: 3,
+      isFirstProfile: isFirstProfile,
+      count: isFirstProfile ? 1 : 3,
     );
 
     final startDate = surveyRecords.isNotEmpty
@@ -728,5 +852,6 @@ class StorageService {
     await db.delete(_languageHistoryTable);
     await db.delete(_sensorUsageTable);
     await db.delete(_behaviorSnapshotTable);
+    await db.delete(_taskFollowUpTable);
   }
 }

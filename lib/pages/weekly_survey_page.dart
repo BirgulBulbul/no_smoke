@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../core/app_texts.dart';
 import '../models/survey_record.dart';
 import '../models/user_profile_snapshot.dart';
+import 'breath_test_page.dart';
 import '../services/storage_service.dart';
 import '../widgets/consecutive_smoking_section.dart';
 import '../widgets/packs_per_day_section.dart';
@@ -21,7 +22,7 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
   String _mood = 'Orta';
   String _packOption = '1 paketten az';
   String? _highPackOption;
-  String _consecutiveSmokingHabit = 'Hayır';
+  String? _consecutiveSmokingHabit;
   String? _consecutiveSmokingCount;
 
   String get _resolvedPacksPerDay {
@@ -46,7 +47,7 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
       riskScore: _mood == 'İyi' ? 15 : _mood == 'Orta' ? 35 : 55,
       riskLevel: _mood == 'İyi' ? 'DÜŞÜK' : _mood == 'Orta' ? 'ORTA' : 'YÜKSEK',
       consecutiveSmokingHabit: _consecutiveSmokingHabit,
-      consecutiveSmokingCount: _consecutiveSmokingHabit == 'Hayır' ? null : _consecutiveSmokingCount,
+      consecutiveSmokingCount: _consecutiveSmokingHabit == 'Evet' ? _consecutiveSmokingCount : null,
     );
     await _storageService.saveSurveyRecord(record);
 
@@ -65,8 +66,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         packsPerDay: _resolvedPacksPerDay,
         firstCigaretteRange: 'unknown',
         smokeFreeRange: 'unknown',
-        consecutiveSmokingHabit: _consecutiveSmokingHabit,
-        consecutiveSmokingCount: _consecutiveSmokingCount,
+        consecutiveSmokingHabit: _consecutiveSmokingHabit ?? 'Hayır',
+        consecutiveSmokingCount: _consecutiveSmokingHabit == 'Evet' ? _consecutiveSmokingCount : null,
         triggers: const [],
         healthConditions: const [],
         profession: 'Belirtilmedi',
@@ -76,6 +77,16 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         latestInhaleSeconds: 0,
       ),
     );
+  }
+
+  Future<String> _resolveLatestUserName() async {
+    final records = await _storageService.loadSurveyHistory();
+    for (final record in records.reversed) {
+      if (record.name.trim().isNotEmpty) {
+        return record.name.trim();
+      }
+    }
+    return 'User';
   }
 
   @override
@@ -143,10 +154,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
               onHabitChanged: (value) {
                 setState(() {
                   _consecutiveSmokingHabit = value;
-                  if (value == 'Hayır') {
+                  if (value != 'Evet') {
                     _consecutiveSmokingCount = null;
-                  } else {
-                    _consecutiveSmokingCount ??= ConsecutiveSmokingSection.countOptions.first;
                   }
                 });
               },
@@ -172,9 +181,18 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
               child: ElevatedButton(
                 onPressed: () async {
                   await _saveWeeklySurvey();
+                  final latestUserName = await _resolveLatestUserName();
                   if (!mounted) return;
                   if (!context.mounted) return;
-                  Navigator.pop(context);
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BreathTestPage(
+                        name: latestUserName,
+                        packsPerDay: _resolvedPacksPerDay,
+                      ),
+                    ),
+                  );
                 },
                 child: Text(context.t('save')),
               ),

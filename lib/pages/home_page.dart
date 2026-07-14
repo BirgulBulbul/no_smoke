@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/app_texts.dart';
+import '../pages/task_follow_up_page.dart';
+import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/no_smoke_logo.dart';
 
@@ -22,9 +26,19 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final StorageService _storageService = StorageService();
+  final Map<String, String> _taskStates = {};
+  final Map<String, Timer> _taskFollowUpTimers = {};
+  List<Map<String, dynamic>> _pendingFollowUps = const [];
+  bool _registrationCompleted = false;
+  bool _isCompletingRegistration = false;
   String _lastSurveyDateText = '...';
   String _lastBreathText = '...';
+  String _dailyBreathStatus = '...';
+  int _latestExhaleSeconds = 0;
+  int _latestInhaleSeconds = 0;
   String _breathTrendText = '...';
+  String _weeklyImprovementText = '...';
+  String _monthlyImprovementText = '...';
   String _progressSummaryText = '...';
   String _predictedRiskWindow = '...';
   String _predictedTrigger = '...';
@@ -48,38 +62,227 @@ class _HomePageState extends State<HomePage> {
     _loadHomeMetrics();
   }
 
+  @override
+  void dispose() {
+    for (final timer in _taskFollowUpTimers.values) {
+      timer.cancel();
+    }
+    super.dispose();
+  }
+
+  void _scheduleLocalFollowUp(String taskTitle, DateTime scheduledAt) {
+    final remaining = scheduledAt.difference(DateTime.now());
+    final delay = remaining.isNegative ? Duration.zero : remaining;
+    _taskFollowUpTimers[taskTitle]?.cancel();
+    _taskFollowUpTimers[taskTitle] = Timer(delay, () {
+      if (!mounted) {
+        return;
+      }
+      _askTaskOutcome(taskTitle);
+    });
+  }
+
+  Future<void> _restorePendingFollowUps() async {
+    final pending = await _storageService.loadPendingTaskFollowUps();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _pendingFollowUps = pending;
+    });
+
+    for (final row in pending) {
+      final taskTitle = row['taskTitle'] as String;
+      final scheduledAt = row['scheduledAt'] as DateTime;
+      _scheduleLocalFollowUp(taskTitle, scheduledAt);
+      _taskStates[taskTitle] = 'deferred';
+    }
+  }
+
+  String _calculateImprovementLabel(double current, double baseline) {
+    if (current > baseline + 0.2) {
+      return 'trendImproving';
+    }
+    if (current < baseline - 0.2) {
+      return 'trendDeclining';
+    }
+    return 'trendStable';
+  }
+
+  String _translateTrend(String trendKey) {
+    if (trendKey == 'trendImproving') {
+      return context.t('trendImproving');
+    }
+    if (trendKey == 'trendDeclining') {
+      return context.t('trendDeclining');
+    }
+    if (trendKey == 'trendStable') {
+      return context.t('trendStable');
+    }
+    return trendKey;
+  }
+
+  Future<void> _askTaskOutcome(String taskTitle) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(context.t('taskOutcomeQuestion')),
+          content: Text(taskTitle),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(context.t('taskOutcomeNo')),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(context.t('taskOutcomeYes')),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == null) {
+      return;
+    }
+
+    await _storageService.saveTaskResult(
+      taskTitle: taskTitle,
+      taskResult: result ? 'success' : 'failed',
+      completedAt: DateTime.now(),
+    );
+    await _storageService.resolveTaskFollowUpByTitle(taskTitle);
+    _taskFollowUpTimers[taskTitle]?.cancel();
+    _taskFollowUpTimers.remove(taskTitle);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _taskStates[taskTitle] = result ? 'completed' : 'failed';
+    });
+
+    await _loadHomeMetrics();
+    await _restorePendingFollowUps();
+  }
+
   Future<void> _loadHomeMetrics() async {
+    final registrationCompleted = await _storageService.loadInitialRegistrationCompleted();
     final lastDate = await _storageService.loadLastSurveyDate();
     final latestBreath = await _storageService.loadLatestBreathRecord();
     final metrics = await _storageService.loadBreathMetrics();
     final consecutiveSmokingSummary = await _storageService.loadConsecutiveSmokingSummary();
-    final behavior = await _storageService.loadBehaviorDashboard();
+    final behavior = registrationCompleted
+        ? await _storageService.loadBehaviorDashboard()
+        : await _storageService.loadLatestBehaviorSnapshot();
+    final pendingFollowUps = await _storageService.loadPendingTaskFollowUps();
     if (!mounted) return;
     setState(() {
+      _registrationCompleted = registrationCompleted;
       _lastSurveyDateText = lastDate == null
           ? 'noRecordYet'
           : '${lastDate.day}/${lastDate.month}/${lastDate.year}';
       _lastBreathText = latestBreath == null
           ? 'noRecordYet'
           : '${latestBreath.completedAt.day}/${latestBreath.completedAt.month}/${latestBreath.completedAt.year} • ${latestBreath.exhaleTestSeconds}${context.t('secShort')} / ${latestBreath.inhaleTestSeconds}${context.t('secShort')}';
+        _latestExhaleSeconds = latestBreath?.exhaleTestSeconds ?? 0;
+        _latestInhaleSeconds = latestBreath?.inhaleTestSeconds ?? 0;
+        final now = DateTime.now();
+        final doneToday = latestBreath != null &&
+          latestBreath.completedAt.year == now.year &&
+          latestBreath.completedAt.month == now.month &&
+          latestBreath.completedAt.day == now.day;
+        _dailyBreathStatus = doneToday ? 'breathTestDoneToday' : 'breathTestPendingToday';
       _dailyAverage = metrics['dailyAverage'] ?? 0;
       _weeklyAverage = metrics['weeklyAverage'] ?? 0;
       _monthlyAverage = metrics['monthlyAverage'] ?? 0;
-      _adaptiveRiskScore = behavior.riskScore;
-      _riskyTriggers = behavior.riskyTriggers;
-      _riskyHours = behavior.riskyHours;
-      _breathTrendText = behavior.breathTrend;
-      _progressSummaryText = behavior.progressSummary;
-      _todaysTasks = behavior.todaysTasks;
-      _predictedRiskWindow = behavior.predictedRiskWindow;
-      _predictedTrigger = behavior.predictedTrigger;
-      _predictionConfidence = behavior.predictionConfidence;
-      _weeklyRiskTarget = behavior.plan.weeklyRiskTarget;
+        _weeklyImprovementText = _calculateImprovementLabel(_weeklyAverage, _monthlyAverage);
+        _monthlyImprovementText = _calculateImprovementLabel(_monthlyAverage, _dailyAverage);
+      _adaptiveRiskScore = behavior?.riskScore ?? 0;
+      _riskyTriggers = behavior?.riskyTriggers ?? const [];
+      _riskyHours = behavior?.riskyHours ?? const [];
+      _breathTrendText = behavior?.breathTrend ?? 'Stable';
+      _progressSummaryText = behavior?.progressSummary ?? 'Stable';
+      _todaysTasks = behavior?.todaysTasks ?? const [];
+      _predictedRiskWindow = behavior?.predictedRiskWindow ?? '...';
+      _predictedTrigger = behavior?.predictedTrigger ?? '...';
+      _predictionConfidence = behavior?.predictionConfidence ?? 0;
+      _weeklyRiskTarget = behavior?.plan.weeklyRiskTarget ?? 0;
       _consecutiveSmokingLatestText = consecutiveSmokingSummary['latest'] ?? context.t('noRecordYet');
       _consecutiveSmokingPreviousText = consecutiveSmokingSummary['previous'] ?? context.t('noRecordYet');
       _consecutiveSmokingTrendText = consecutiveSmokingSummary['trend'] ?? context.t('noRecordYet');
       _consecutiveSmokingStatusText = consecutiveSmokingSummary['status'] ?? context.t('noRecordYet');
+      for (final task in _todaysTasks) {
+        _taskStates.putIfAbsent(task, () => 'new');
+      }
+      _pendingFollowUps = pendingFollowUps;
     });
+  }
+
+  Duration _resolveInitialTaskDelay(String taskTitle) {
+    if (taskTitle.contains('60 dakika')) {
+      return const Duration(minutes: 60);
+    }
+    if (taskTitle.contains('15 dakika')) {
+      return const Duration(minutes: 15);
+    }
+    return const Duration(minutes: 30);
+  }
+
+  Future<void> _completeRegistration() async {
+    if (_isCompletingRegistration || _registrationCompleted) {
+      return;
+    }
+
+    setState(() {
+      _isCompletingRegistration = true;
+    });
+
+    try {
+      final behavior = await _storageService.loadBehaviorDashboard();
+      final firstTask = behavior.todaysTasks.isEmpty ? null : behavior.todaysTasks.first;
+
+      if (firstTask != null) {
+        final createdAt = DateTime.now();
+        final followUpDelay = _resolveInitialTaskDelay(firstTask);
+        final followUpAt = createdAt.add(followUpDelay);
+
+        await _storageService.saveTaskResult(
+          taskTitle: firstTask,
+          taskResult: 'created',
+          completedAt: createdAt,
+        );
+        await _storageService.saveTaskFollowUp(
+          taskTitle: firstTask,
+          scheduledAt: followUpAt,
+        );
+        await NotificationService.scheduleTaskFollowUpReminder(
+          taskTitle: firstTask,
+          delay: followUpDelay,
+        );
+        _scheduleLocalFollowUp(firstTask, followUpAt);
+      }
+
+      await _storageService.saveInitialRegistrationCompleted(true);
+      await _loadHomeMetrics();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.t('registrationCompleted'))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCompletingRegistration = false;
+        });
+      }
+    }
   }
 
   @override
@@ -96,10 +299,9 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
       body: Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
                 '${context.t('welcome')}, ${widget.name}',
@@ -128,21 +330,52 @@ class _HomePageState extends State<HomePage> {
                 '${context.t('lastBreathTest')}: ${_lastBreathText == 'noRecordYet' ? context.t('noRecordYet') : _lastBreathText}',
                 style: const TextStyle(fontSize: 16),
               ),
+              const SizedBox(height: 8),
+              Text(
+                '${context.t('dailyBreathStatus')}: ${context.t(_dailyBreathStatus)}',
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${context.t('lastExhale')}: $_latestExhaleSeconds${context.t('secShort')} • ${context.t('lastInhale')}: $_latestInhaleSeconds${context.t('secShort')}',
+                style: const TextStyle(fontSize: 16),
+              ),
               const SizedBox(height: 16),
               _buildBreathTrendCard(),
               const SizedBox(height: 16),
               _buildAdaptiveInsightsCard(),
               const SizedBox(height: 16),
               _buildTodayTaskCard(),
+              const SizedBox(height: 12),
+              if (_pendingFollowUps.isNotEmpty)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TaskFollowUpPage()),
+                      );
+                      if (!mounted) {
+                        return;
+                      }
+                      await _loadHomeMetrics();
+                      await _restorePendingFollowUps();
+                    },
+                    child: Text(context.t('openTaskFollowUpScreen')),
+                  ),
+                ),
               const SizedBox(height: 16),
               _buildConsecutiveSmokingCard(),
               const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.popUntil(context, (route) => route.isFirst);
-                },
-                child: Text(context.t('backToStart')),
-              ),
+              if (!_registrationCompleted)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isCompletingRegistration ? null : _completeRegistration,
+                    child: Text(context.t('completeRegistration')),
+                  ),
+                ),
             ],
           ),
         ),
@@ -213,10 +446,41 @@ class _HomePageState extends State<HomePage> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
-            ...tasks.map((task) => Padding(
+            if (_pendingFollowUps.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('${context.t('taskFollowUpPendingCount')}: ${_pendingFollowUps.length}'),
+              ),
+            ...tasks.map((task) {
+              if (_todaysTasks.isEmpty) {
+                return Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text('- $task'),
-                )),
+                );
+              }
+              final state = _taskStates[task] ?? 'new';
+              final translatedState = state == 'completed'
+                  ? context.t('taskStateCompleted')
+                  : state == 'failed'
+                      ? context.t('taskStateFailed')
+                      : state == 'deferred'
+                          ? context.t('taskStateDeferred')
+                          : context.t('taskStateNew');
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('- $task'),
+                    const SizedBox(height: 6),
+                    Text(
+                      translatedState,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              );
+            }),
           ],
         ),
       ),
@@ -249,6 +513,10 @@ class _HomePageState extends State<HomePage> {
                 _buildTrendBar(context.t('monthly'), values[2], _monthlyAverage),
               ],
             ),
+            const SizedBox(height: 10),
+            Text('${context.t('weeklyImprovement')}: ${_translateTrend(_weeklyImprovementText)}'),
+            const SizedBox(height: 6),
+            Text('${context.t('monthlyImprovement')}: ${_translateTrend(_monthlyImprovementText)}'),
           ],
         ),
       ),

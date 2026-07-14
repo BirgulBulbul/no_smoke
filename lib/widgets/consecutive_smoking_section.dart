@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../core/app_texts.dart';
 
 class ConsecutiveSmokingSection extends StatelessWidget {
-  final String consecutiveSmokingHabit;
-  final ValueChanged<String> onHabitChanged;
+  final String? consecutiveSmokingHabit;
+  final ValueChanged<String?> onHabitChanged;
   final String? consecutiveSmokingCount;
   final ValueChanged<String> onCountChanged;
 
@@ -17,9 +17,8 @@ class ConsecutiveSmokingSection extends StatelessWidget {
   });
 
   static const List<String> habitOptions = [
+    'Evet',
     'Hayır',
-    'Evet, bazen',
-    'Evet, sık sık',
   ];
 
   static const List<String> countOptions = [
@@ -29,7 +28,7 @@ class ConsecutiveSmokingSection extends StatelessWidget {
     '5+ adet',
   ];
 
-  bool get _needsCount => consecutiveSmokingHabit != 'Hayır';
+  bool get _needsCount => consecutiveSmokingHabit == 'Evet';
 
   @override
   Widget build(BuildContext context) {
@@ -37,10 +36,8 @@ class ConsecutiveSmokingSection extends StatelessWidget {
       switch (value) {
         case 'Hayır':
           return context.t('no');
-        case 'Evet, bazen':
-          return context.t('yesSometimes');
-        case 'Evet, sık sık':
-          return context.t('yesOften');
+        case 'Evet':
+          return context.t('yes');
         default:
           return value;
       }
@@ -67,19 +64,26 @@ class ConsecutiveSmokingSection extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           context.t('chainSmokingSituation'),
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
           initialValue: consecutiveSmokingHabit,
           decoration: InputDecoration(
             labelText: context.t('chainSmokingAsk'),
-            border: OutlineInputBorder(),
+            border: const OutlineInputBorder(),
           ),
+          hint: const Text('Lütfen seçiniz'),
           items: habitOptions
               .map((value) => DropdownMenuItem<String>(value: value, child: Text(labelForHabit(value))))
               .toList(),
-          onChanged: (value) => onHabitChanged(value ?? 'Hayır'),
+          onChanged: onHabitChanged,
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return '';
+            }
+            return null;
+          },
         ),
         if (_needsCount) ...[
           const SizedBox(height: 10),
@@ -87,12 +91,19 @@ class ConsecutiveSmokingSection extends StatelessWidget {
             initialValue: consecutiveSmokingCount,
             decoration: InputDecoration(
               labelText: context.t('chainSmokingCountAsk'),
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
             ),
+            hint: const Text('Lütfen seçiniz'),
             items: countOptions
                 .map((value) => DropdownMenuItem<String>(value: value, child: Text(labelForCount(value))))
                 .toList(),
             onChanged: (value) => onCountChanged(value ?? '2 adet'),
+            validator: (value) {
+              if (_needsCount && (value == null || value.isEmpty)) {
+                return '';
+              }
+              return null;
+            },
           ),
         ],
       ],

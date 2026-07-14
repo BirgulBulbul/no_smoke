@@ -22,12 +22,10 @@ class _SurveyPageState extends State<SurveyPage> {
   final StorageService _storageService = StorageService();
   final TextEditingController nameController = TextEditingController();
   final TextEditingController ageController = TextEditingController();
-  final TextEditingController smokingYearsController = TextEditingController();
-  final TextEditingController workStartController = TextEditingController();
-  final TextEditingController workEndController = TextEditingController();
 
   String? gender;
   String? profession;
+  String? smokingYears;
   String firstCigaretteRange = '10-30';
   String smokeFreeRange = '30-60';
   String workplaceSmokingRule = 'Hayır';
@@ -35,9 +33,11 @@ class _SurveyPageState extends State<SurveyPage> {
   String quitReason = 'Sağlık';
   String sleepTime = '21:00';
   String wakeTime = '07:00';
+  String? workStartTime;
+  String? workEndTime;
   String packOption = '1 paketten az';
   String? highPackOption;
-  String consecutiveSmokingHabit = 'Hayır';
+  String? consecutiveSmokingHabit;
   String? consecutiveSmokingCount;
 
   bool hypertension = false;
@@ -102,6 +102,25 @@ class _SurveyPageState extends State<SurveyPage> {
     );
   }
 
+  List<String> get workTimeOptions {
+    return List.generate(
+      38,
+      (index) {
+        final totalMinutes = (5 * 60) + (index * 30);
+        final hour = (totalMinutes ~/ 60).toString().padLeft(2, '0');
+        final minute = (totalMinutes % 60).toString().padLeft(2, '0');
+        return '$hour:$minute';
+      },
+    );
+  }
+
+  static const List<String> smokingYearOptions = [
+    '1-3 yıl',
+    '4-7 yıl',
+    '8-10 yıl',
+    '10+ yıl',
+  ];
+
   String get _resolvedPacksPerDay {
     if (packOption == '3+ paket') {
       return highPackOption ?? '4 paket';
@@ -153,7 +172,7 @@ class _SurveyPageState extends State<SurveyPage> {
       riskScore: 0,
       riskLevel: 'BAŞLANGIÇ',
       consecutiveSmokingHabit: consecutiveSmokingHabit,
-      consecutiveSmokingCount: consecutiveSmokingHabit == 'Hayır' ? null : consecutiveSmokingCount,
+      consecutiveSmokingCount: consecutiveSmokingHabit == 'Evet' ? consecutiveSmokingCount : null,
     );
     await _storageService.saveSurveyRecord(record);
 
@@ -168,8 +187,8 @@ class _SurveyPageState extends State<SurveyPage> {
       wakeTime: wakeTime,
       stressLevel: stressLevel,
       quitReason: quitReason,
-      workStart: workStartController.text.trim(),
-      workEnd: workEndController.text.trim(),
+      workStart: workStartTime,
+      workEnd: workEndTime,
       workplaceSmokingRule: workplaceSmokingRule,
     );
 
@@ -181,7 +200,7 @@ class _SurveyPageState extends State<SurveyPage> {
         packsPerDay: _resolvedPacksPerDay,
         firstCigaretteRange: firstCigaretteRange,
         smokeFreeRange: smokeFreeRange,
-        consecutiveSmokingHabit: consecutiveSmokingHabit,
+        consecutiveSmokingHabit: consecutiveSmokingHabit ?? 'Hayır',
         consecutiveSmokingCount: consecutiveSmokingCount,
         triggers: selectedTriggers,
         healthConditions: selectedHealth,
@@ -194,28 +213,52 @@ class _SurveyPageState extends State<SurveyPage> {
     );
   }
 
-  bool _hasRequiredFields() {
-    return nameController.text.trim().isNotEmpty &&
-        ageController.text.trim().isNotEmpty &&
-        gender != null &&
-        profession != null &&
-        smokingYearsController.text.trim().isNotEmpty &&
-        sleepTime.isNotEmpty &&
-        wakeTime.isNotEmpty &&
-        workStartController.text.trim().isNotEmpty &&
-        workEndController.text.trim().isNotEmpty &&
-        workplaceSmokingRule.isNotEmpty &&
-        stressLevel.isNotEmpty &&
-        quitReason.isNotEmpty;
+  String? _missingRequiredFieldMessage() {
+    if (nameController.text.trim().isEmpty) {
+      return 'Lütfen Ad alanını doldurun.';
+    }
+    if (ageController.text.trim().isEmpty) {
+      return 'Lütfen Yaş alanını doldurun.';
+    }
+    if (gender == null || gender!.isEmpty) {
+      return 'Lütfen Cinsiyet seçin.';
+    }
+    if (profession == null || profession!.isEmpty) {
+      return 'Lütfen Meslek alanını doldurun.';
+    }
+    if (smokingYears == null || smokingYears!.isEmpty) {
+      return 'Lütfen Kaç yıldır sigara içtiğinizi belirtin.';
+    }
+    if (consecutiveSmokingHabit == null || consecutiveSmokingHabit!.isEmpty) {
+      return 'Lütfen arka arkaya sigara içme durumunu seçin.';
+    }
+    if (consecutiveSmokingHabit == 'Evet' &&
+        (consecutiveSmokingCount == null || consecutiveSmokingCount!.isEmpty)) {
+      return 'Lütfen arka arkaya sigara adedini seçin.';
+    }
+    if (workStartTime == null || workStartTime!.isEmpty) {
+      return 'Lütfen Çalışma başlangıç saatini girin.';
+    }
+    if (workEndTime == null || workEndTime!.isEmpty) {
+      return 'Lütfen Çalışma bitiş saatini girin.';
+    }
+    return null;
+  }
+
+  void _showValidationMessage(String message) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+      ),
+    );
   }
 
   @override
   void dispose() {
     nameController.dispose();
     ageController.dispose();
-    smokingYearsController.dispose();
-    workStartController.dispose();
-    workEndController.dispose();
     super.dispose();
   }
 
@@ -254,7 +297,48 @@ class _SurveyPageState extends State<SurveyPage> {
               },
             ),
             const SizedBox(height: 10),
+            TextFormField(
+              controller: ageController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: context.t('age'),
+                border: OutlineInputBorder(),
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return '';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 10),
             DropdownButtonFormField<String>(
+              key: const ValueKey('gender_dropdown'),
+              initialValue: gender,
+              decoration: InputDecoration(
+                labelText: context.t('gender'),
+                border: OutlineInputBorder(),
+              ),
+              hint: const Text('Lütfen seçin'),
+              items: [
+                DropdownMenuItem(value: 'Erkek', child: Text(context.t('male'))),
+                DropdownMenuItem(value: 'Kadın', child: Text(context.t('female'))),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  gender = value;
+                });
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return '';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              key: const ValueKey('profession_dropdown'),
               initialValue: profession,
               decoration: const InputDecoration(
                 labelText: 'Meslek',
@@ -272,45 +356,6 @@ class _SurveyPageState extends State<SurveyPage> {
               onChanged: (value) {
                 setState(() {
                   profession = value;
-                });
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return '';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 10),
-            TextFormField(
-              controller: ageController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: context.t('age'),
-                border: OutlineInputBorder(),
-              ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return '';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: gender,
-              decoration: InputDecoration(
-                labelText: context.t('gender'),
-                border: OutlineInputBorder(),
-              ),
-              hint: const Text('Lütfen seçin'),
-              items: [
-                DropdownMenuItem(value: 'Erkek', child: Text(context.t('male'))),
-                DropdownMenuItem(value: 'Kadın', child: Text(context.t('female'))),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  gender = value;
                 });
               },
               validator: (value) {
@@ -383,18 +428,49 @@ class _SurveyPageState extends State<SurveyPage> {
               },
             ),
             const SizedBox(height: 10),
-            TextFormField(
-              controller: smokingYearsController,
-              keyboardType: TextInputType.number,
+            DropdownButtonFormField<String>(
+              initialValue: smokingYears,
               decoration: InputDecoration(
                 labelText: context.t('smokingYears'),
                 border: OutlineInputBorder(),
               ),
+              hint: const Text('Lütfen seçin'),
+              items: smokingYearOptions
+                  .map(
+                    (value) => DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                setState(() {
+                  smokingYears = value;
+                });
+              },
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
+                if (value == null || value.isEmpty) {
                   return '';
                 }
                 return null;
+              },
+            ),
+            const SizedBox(height: 10),
+            ConsecutiveSmokingSection(
+              consecutiveSmokingHabit: consecutiveSmokingHabit,
+              consecutiveSmokingCount: consecutiveSmokingCount,
+              onHabitChanged: (value) {
+                setState(() {
+                  consecutiveSmokingHabit = value;
+                  if (value != 'Evet') {
+                    consecutiveSmokingCount = null;
+                  }
+                });
+              },
+              onCountChanged: (value) {
+                setState(() {
+                  consecutiveSmokingCount = value;
+                });
               },
             ),
             const SizedBox(height: 20),
@@ -416,25 +492,6 @@ class _SurveyPageState extends State<SurveyPage> {
               onChanged: (value) {
                 setState(() {
                   sleepTime = value!;
-                });
-              },
-            ),
-            ConsecutiveSmokingSection(
-              consecutiveSmokingHabit: consecutiveSmokingHabit,
-              consecutiveSmokingCount: consecutiveSmokingCount,
-              onHabitChanged: (value) {
-                setState(() {
-                  consecutiveSmokingHabit = value;
-                  if (value == 'Hayır') {
-                    consecutiveSmokingCount = null;
-                  } else {
-                    consecutiveSmokingCount ??= ConsecutiveSmokingSection.countOptions.first;
-                  }
-                });
-              },
-              onCountChanged: (value) {
-                setState(() {
-                  consecutiveSmokingCount = value;
                 });
               },
             ),
@@ -460,28 +517,56 @@ class _SurveyPageState extends State<SurveyPage> {
               },
             ),
             const SizedBox(height: 10),
-            TextFormField(
-              controller: workStartController,
+            DropdownButtonFormField<String>(
+              initialValue: workStartTime,
               decoration: InputDecoration(
                 labelText: context.t('workStart'),
                 border: OutlineInputBorder(),
               ),
+              hint: const Text('Lütfen seçin'),
+              items: workTimeOptions
+                  .map(
+                    (time) => DropdownMenuItem<String>(
+                      value: time,
+                      child: Text(time),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                setState(() {
+                  workStartTime = value;
+                });
+              },
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
+                if (value == null || value.isEmpty) {
                   return '';
                 }
                 return null;
               },
             ),
             const SizedBox(height: 10),
-            TextFormField(
-              controller: workEndController,
+            DropdownButtonFormField<String>(
+              initialValue: workEndTime,
               decoration: InputDecoration(
                 labelText: context.t('workEnd'),
                 border: OutlineInputBorder(),
               ),
+              hint: const Text('Lütfen seçin'),
+              items: workTimeOptions
+                  .map(
+                    (time) => DropdownMenuItem<String>(
+                      value: time,
+                      child: Text(time),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                setState(() {
+                  workEndTime = value;
+                });
+              },
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
+                if (value == null || value.isEmpty) {
                   return '';
                 }
                 return null;
@@ -586,23 +671,29 @@ class _SurveyPageState extends State<SurveyPage> {
               width: double.infinity,
               height: 60,
               child: ElevatedButton(
+                key: const ValueKey('survey_continue_button'),
                 onPressed: () async {
-                  final formValid = _formKey.currentState?.validate() ?? false;
-                  if (!formValid || !_hasRequiredFields()) {
+                  _formKey.currentState?.validate();
+                  final missingMessage = _missingRequiredFieldMessage();
+
+                  if (missingMessage != null) {
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Lütfen tüm zorunlu alanları doldurunuz.'),
-                      ),
-                    );
+                    _showValidationMessage(missingMessage);
                     return;
                   }
 
-                  await _saveInitialSurveyRecord();
-                  if (!mounted) return;
+                  try {
+                    await _saveInitialSurveyRecord();
+                  } catch (_) {
+                    if (!mounted) return;
+                    _showValidationMessage(
+                      'Kayıt sırasında bir sorun oluştu. Anket ekranından devam ediliyor.',
+                    );
+                  }
+
                   if (!context.mounted) return;
-                  Navigator.push(
-                    context,
+                  final navigator = Navigator.of(context);
+                  await navigator.push(
                     MaterialPageRoute(
                       builder: (_) => BreathTestPage(
                         name: nameController.text.trim(),

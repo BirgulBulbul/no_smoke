@@ -4,16 +4,22 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/app_texts.dart';
+import '../models/survey_record.dart';
+import '../models/user_profile_snapshot.dart';
+import '../services/storage_service.dart';
+import 'home_page.dart';
 import 'risk_result_page.dart';
 
 class BreathTestPage extends StatefulWidget {
   final String name;
   final String packsPerDay;
+  final bool navigateToHomeOnComplete;
 
   const BreathTestPage({
     super.key,
     this.name = 'User',
     this.packsPerDay = '1 paketten az',
+    this.navigateToHomeOnComplete = false,
   });
 
   @override
@@ -22,6 +28,7 @@ class BreathTestPage extends StatefulWidget {
 
 class _BreathTestPageState extends State<BreathTestPage> {
   final Stopwatch _stopwatch = Stopwatch();
+  final StorageService _storageService = StorageService();
   Timer? _timer;
   int _currentTest = 1;
   int _test1Seconds = 0;
@@ -69,10 +76,10 @@ class _BreathTestPageState extends State<BreathTestPage> {
     }
 
     _test2Seconds = _stopwatch.elapsed.inSeconds;
-    _navigateToResult();
+    unawaited(_navigateToResult());
   }
 
-  void _navigateToResult() {
+  Future<void> _navigateToResult() async {
     final averageSeconds = ((_test1Seconds + _test2Seconds) / 2).round();
     late final int riskScore;
     late final String riskLevel;
@@ -95,6 +102,11 @@ class _BreathTestPageState extends State<BreathTestPage> {
       return;
     }
 
+    if (widget.navigateToHomeOnComplete) {
+      await _saveBreathResultAndOpenHome(riskScore);
+      return;
+    }
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -105,6 +117,74 @@ class _BreathTestPageState extends State<BreathTestPage> {
           packsPerDay: widget.packsPerDay,
           exhaleTestSeconds: _test1Seconds,
           inhaleTestSeconds: _test2Seconds,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveBreathResultAndOpenHome(int baseRiskScore) async {
+    final adjustedRiskScore = await _storageService.calculateAdjustedRiskScore(
+      baseScore: baseRiskScore,
+      exhaleSeconds: _test1Seconds,
+      inhaleSeconds: _test2Seconds,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    final adjustedRiskLevel = adjustedRiskScore >= 80
+        ? 'KRİTİK'
+        : adjustedRiskScore >= 60
+            ? 'YÜKSEK'
+            : adjustedRiskScore >= 40
+                ? 'ORTA'
+                : 'DÜŞÜK';
+
+    final record = SurveyRecord(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      completedAt: DateTime.now(),
+      type: 'breath_test',
+      title: context.t('breathTestRecordTitle'),
+      name: widget.name,
+      packsPerDay: widget.packsPerDay,
+      exhaleTestSeconds: _test1Seconds,
+      inhaleTestSeconds: _test2Seconds,
+      riskScore: adjustedRiskScore,
+      riskLevel: adjustedRiskLevel,
+    );
+    await _storageService.saveSurveyRecord(record);
+    await _storageService.saveUserProfileSnapshot(
+      UserProfileSnapshot(
+        id: 'profile_${record.id}',
+        createdAt: record.completedAt,
+        riskScore: adjustedRiskScore,
+        packsPerDay: widget.packsPerDay,
+        firstCigaretteRange: 'unknown',
+        smokeFreeRange: 'unknown',
+        consecutiveSmokingHabit: 'Hayır',
+        consecutiveSmokingCount: null,
+        triggers: const [],
+        healthConditions: const [],
+        profession: 'Belirtilmedi',
+        sleepTime: '21:00',
+        wakeTime: '07:00',
+        latestExhaleSeconds: _test1Seconds,
+        latestInhaleSeconds: _test2Seconds,
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HomePage(
+          name: widget.name,
+          riskScore: adjustedRiskScore,
+          riskLevel: adjustedRiskLevel,
         ),
       ),
     );
