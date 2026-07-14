@@ -5,14 +5,20 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.database.sqlite.SQLiteDatabase
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 
 class NoResponseWatchdogService : Service() {
     private val handler = Handler(Looper.getMainLooper())
@@ -235,8 +241,11 @@ object WatchdogViolationNotifier {
     fun triggerNoResponseViolation(context: Context, state: WatchdogState) {
         createViolationChannelIfNeeded(context)
 
-        val payload = "no_response_10_min|${state.taskTitle}|${System.currentTimeMillis()}"
-        WatchdogStore.enqueueViolation(context, payload)
+        val inserted = NativeViolationStore.tryInsertNoResponseViolation(context, state)
+        if (!inserted) {
+            val payload = "no_response_10_min|${state.taskTitle}|${System.currentTimeMillis()}"
+            WatchdogStore.enqueueViolation(context, payload)
+        }
 
         val id = state.watchdogId.hashCode().let { if (it < 0) -it else it }
         val notification = NotificationCompat.Builder(context, NoResponseWatchdogService.VIOLATION_CHANNEL_ID)
@@ -267,5 +276,46 @@ object WatchdogViolationNotifier {
             description = "10 dakika yanitsiz gorev ihlali"
         }
         manager.createNotificationChannel(channel)
+    }
+}
+
+object NativeViolationStore {
+    private const val TABLE = "protocol_violations"
+
+    fun tryInsertNoResponseViolation(context: Context, state: WatchdogState): Boolean {
+        val dbFile = File(File(context.applicationInfo.dataDir, "app_flutter"), "no_smoke.db")
+        if (!dbFile.exists()) {
+            return false
+        }
+
+        return try {
+            SQLiteDatabase.openDatabase(
+                dbFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE,
+            ).use { db ->
+                val now = System.currentTimeMillis()
+                val values = ContentValues().apply {
+                    put("id", "vio_native_${now}_${state.watchdogId}")
+                    put("type", "no_response_10_min")
+                    put("severity", "high")
+                    put("taskTitle", state.taskTitle)
+                    put("details", "10 minutes passed with no response to task notification.")
+                    put("createdAt", formatIsoUtc(now))
+                    put("resolved", 0)
+                }
+
+                db.insert(TABLE, null, values)
+            }
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun formatIsoUtc(millis: Long): String {
+        val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+        formatter.timeZone = TimeZone.getTimeZone("UTC")
+        return formatter.format(millis)
     }
 }
