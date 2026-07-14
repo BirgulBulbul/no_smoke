@@ -156,6 +156,7 @@ class AppTexts {
     'taskFollowUpScheduledAt': 'Planlanan takip saati',
     'taskFollowUpPendingCount': 'Bekleyen takip',
     'openTaskFollowUpScreen': 'Gorev Takip Ekranini Ac',
+    'openViolationReportScreen': 'Ihlal Rapor Ekranini Ac',
     'taskDeferredTenMinutes': 'Gorev 10 dakika ertelendi.',
     'taskSuspiciousReset':
         'Supheli davranis algilandi. Sayaç sifirlandi ve uyari yeniden baslatildi.',
@@ -228,6 +229,18 @@ class AppTexts {
     'breathComparedAverageImproved': 'Ortalamaya gore gelisim',
     'breathComparedAverageDeclined': 'Ortalamaya gore gerileme',
     'breathComparedAverageStable': 'Ortalamaya gore belirgin degisim yok.',
+    'mandatoryTaskTitle': 'Zorunlu Gorev Protokolu',
+    'mandatoryTaskCommand': 'Su andan itibaren sigara icme',
+    'mandatoryTaskHint':
+        'Bu ekran gorev baslatilana kadar kapanmaz. Devam etmek icin gorevi baslat.',
+    'mandatoryTaskStartButton': 'Gorevi Baslat',
+    'violationReportTitle': 'Ihlal Raporu',
+    'violationReportEmpty': 'Kayitli ihlal bulunmuyor.',
+    'violationHigh': 'Yuksek',
+    'violationMedium': 'Orta',
+    'violationLow': 'Dusuk',
+    'violationTask': 'Gorev',
+    'violationTime': 'Zaman',
     'completeRegistration': 'Kaydı Tamamla',
     'registrationCompleted': 'Kayıt tamamlandı. İlk görev hazırlandı.',
     'notificationPermissionRequired':
@@ -484,6 +497,7 @@ class AppTexts {
     'taskFollowUpScheduledAt': 'Scheduled follow-up time',
     'taskFollowUpPendingCount': 'Pending follow-ups',
     'openTaskFollowUpScreen': 'Open Task Follow-up Screen',
+    'openViolationReportScreen': 'Open Violation Report Screen',
     'taskDeferredTenMinutes': 'Task deferred by 10 minutes.',
     'taskSuspiciousReset':
         'Suspicious behavior detected. The timer was reset and alert restarted.',
@@ -555,6 +569,18 @@ class AppTexts {
     'breathComparedAverageImproved': 'Improvement versus average',
     'breathComparedAverageDeclined': 'Decline versus average',
     'breathComparedAverageStable': 'No meaningful change versus average.',
+    'mandatoryTaskTitle': 'Mandatory Task Protocol',
+    'mandatoryTaskCommand': 'Do not smoke from this moment',
+    'mandatoryTaskHint':
+        'This screen cannot be dismissed until the task is started.',
+    'mandatoryTaskStartButton': 'Start Task',
+    'violationReportTitle': 'Violation Report',
+    'violationReportEmpty': 'No violation records found.',
+    'violationHigh': 'High',
+    'violationMedium': 'Medium',
+    'violationLow': 'Low',
+    'violationTask': 'Task',
+    'violationTime': 'Time',
     'completeRegistration': 'Complete Registration',
     'registrationCompleted':
         'Registration completed. Your first task is ready.',

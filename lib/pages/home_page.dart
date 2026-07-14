@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../core/app_texts.dart';
 import '../models/survey_record.dart';
 import '../models/user_profile_snapshot.dart';
+import '../pages/mandatory_task_page.dart';
+import '../pages/protocol_violations_page.dart';
 import '../pages/task_follow_up_page.dart';
 import '../services/discipline_protocol_service.dart';
 import '../services/notification_service.dart';
@@ -40,6 +42,7 @@ class _HomePageState extends State<HomePage> {
   final Set<String> _notifiedTaskTitles = <String>{};
   StreamSubscription<Map<String, String>>? _taskActionSubscription;
   List<Map<String, dynamic>> _pendingFollowUps = const [];
+  bool _mandatoryTaskShown = false;
   bool _registrationCompleted = false;
   bool _isCompletingRegistration = false;
   String _lastSurveyDateText = '...';
@@ -241,6 +244,13 @@ class _HomePageState extends State<HomePage> {
     );
 
     if (isSuspicious) {
+      await _storageService.saveProtocolViolation(
+        type: 'suspicious_behavior',
+        severity: 'high',
+        taskTitle: taskTitle,
+        details:
+            'Suspicious movement/usage detected during active task timer. Timer reset.',
+      );
       await _storageService.saveTaskResult(
         taskTitle: taskTitle,
         taskResult: 'suspicious_reset',
@@ -293,6 +303,14 @@ class _HomePageState extends State<HomePage> {
       taskResult: result ? 'willpower_success' : 'willpower_weakness',
       completedAt: DateTime.now(),
     );
+    if (!result) {
+      await _storageService.saveProtocolViolation(
+        type: 'willpower_weakness',
+        severity: 'medium',
+        taskTitle: taskTitle,
+        details: 'Task outcome marked as not completed by user.',
+      );
+    }
     await _storageService.resolveTaskFollowUpByTitle(taskTitle);
     _taskFollowUpTimers[taskTitle]?.cancel();
     _taskFollowUpTimers.remove(taskTitle);
@@ -353,6 +371,12 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (actionId == 'task_not_now') {
+      await _storageService.saveProtocolViolation(
+        type: 'deferred_start',
+        severity: 'medium',
+        taskTitle: taskTitle,
+        details: 'User deferred task start for 10 minutes.',
+      );
       final delay = const Duration(minutes: 10);
       final followUpAt = DateTime.now().add(delay);
       await _storageService.saveTaskFollowUp(
@@ -389,6 +413,12 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (actionId == 'followup_later' || actionId == 'smoked_no') {
+      await _storageService.saveProtocolViolation(
+        type: 'followup_deferred',
+        severity: 'low',
+        taskTitle: taskTitle,
+        details: 'Follow-up response deferred for 10 minutes.',
+      );
       final delay = const Duration(minutes: 10);
       final followUpAt = DateTime.now().add(delay);
       await _storageService.saveTaskFollowUp(
@@ -502,7 +532,93 @@ class _HomePageState extends State<HomePage> {
 
     if (_registrationCompleted) {
       unawaited(_notifyNewTasks());
+      unawaited(_presentMandatoryTaskIfNeeded());
     }
+  }
+
+  Future<void> _presentMandatoryTaskIfNeeded() async {
+    if (!mounted || _mandatoryTaskShown || !_registrationCompleted) {
+      return;
+    }
+
+    String? taskTitle;
+    if (_pendingFollowUps.isNotEmpty) {
+      final first = _pendingFollowUps.first['taskTitle'] as String?;
+      if (first != null && first.trim().isNotEmpty) {
+        taskTitle = first;
+      }
+    }
+
+    if ((taskTitle ?? '').isEmpty) {
+      for (final task in _todaysTasks) {
+        if ((_taskStates[task] ?? 'new') == 'new') {
+          taskTitle = task;
+          break;
+        }
+      }
+    }
+
+    if ((taskTitle ?? '').trim().isEmpty) {
+      return;
+    }
+
+    _mandatoryTaskShown = true;
+    await _storageService.saveProtocolViolation(
+      type: 'mandatory_gate',
+      severity: 'medium',
+      taskTitle: taskTitle,
+      details: 'Mandatory task screen displayed on app open.',
+    );
+
+    if (!mounted) {
+      return;
+    }
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => MandatoryTaskPage(taskTitle: taskTitle!),
+      ),
+    );
+
+    if (result == true) {
+      await _startTaskFromMandatoryScreen(taskTitle!);
+    }
+  }
+
+  Future<void> _startTaskFromMandatoryScreen(String taskTitle) async {
+    final now = DateTime.now();
+    final baseDelay = _resolveInitialTaskDelay(taskTitle);
+    final delay = _disciplineProtocolService.computeAdaptiveTaskDuration(
+      baseDuration: baseDelay,
+      successRate: _currentSuccessRate(),
+    );
+    final followUpAt = now.add(delay);
+
+    await _storageService.saveTaskResult(
+      taskTitle: taskTitle,
+      taskResult: 'started',
+      completedAt: now,
+    );
+    _taskStartedAt[taskTitle] = now;
+    await _storageService.saveTaskFollowUp(
+      taskTitle: taskTitle,
+      scheduledAt: followUpAt,
+    );
+    await NotificationService.showTaskTimerStartedNotification(
+      taskTitle: taskTitle,
+      duration: delay,
+    );
+    await NotificationService.scheduleTaskFollowUpReminder(
+      taskTitle: taskTitle,
+      delay: delay,
+    );
+    _scheduleLocalFollowUp(taskTitle, followUpAt);
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _taskStates[taskTitle] = 'deferred';
+    });
   }
 
   Future<void> _notifyNewTasks() async {
@@ -1104,6 +1220,21 @@ class _HomePageState extends State<HomePage> {
                     child: Text(context.t('openTaskFollowUpScreen')),
                   ),
                 ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ProtocolViolationsPage(),
+                      ),
+                    );
+                  },
+                  child: Text(context.t('openViolationReportScreen')),
+                ),
+              ),
               const SizedBox(height: 16),
               _buildConsecutiveSmokingCard(),
               const SizedBox(height: 24),

@@ -37,6 +37,14 @@ class _TaskFollowUpPageState extends State<TaskFollowUpPage> {
     required String taskTitle,
     required bool success,
   }) async {
+    if (!success) {
+      await _storageService.saveProtocolViolation(
+        type: 'followup_failed',
+        severity: 'medium',
+        taskTitle: taskTitle,
+        details: 'Task follow-up marked as unsuccessful.',
+      );
+    }
     await _storageService.saveTaskResult(
       taskTitle: taskTitle,
       taskResult: success ? 'willpower_success' : 'willpower_weakness',
@@ -47,6 +55,12 @@ class _TaskFollowUpPageState extends State<TaskFollowUpPage> {
   }
 
   Future<void> _deferAgain(String taskTitle) async {
+    await _storageService.saveProtocolViolation(
+      type: 'followup_deferred',
+      severity: 'low',
+      taskTitle: taskTitle,
+      details: 'User deferred follow-up from dedicated follow-up screen.',
+    );
     final nextTime = DateTime.now().add(const Duration(minutes: 10));
     await _storageService.saveTaskFollowUp(taskTitle: taskTitle, scheduledAt: nextTime);
     await NotificationService.scheduleTaskFollowUpReminder(
