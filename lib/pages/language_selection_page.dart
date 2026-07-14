@@ -105,7 +105,11 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const NoSmokeLogo(size: 156, showLabel: true),
+                  const NoSmokeLogo(
+                    size: 156,
+                    showLabel: true,
+                    iconColor: Color(0xE6FFFFFF),
+                  ),
                   const SizedBox(height: 28),
                   Text(
                     context.t('selectLanguage'),

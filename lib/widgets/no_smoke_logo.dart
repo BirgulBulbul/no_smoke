@@ -4,8 +4,14 @@ import 'package:flutter_svg/flutter_svg.dart';
 class NoSmokeLogo extends StatelessWidget {
   final double size;
   final bool showLabel;
+  final Color? iconColor;
 
-  const NoSmokeLogo({super.key, this.size = 96, this.showLabel = false});
+  const NoSmokeLogo({
+    super.key,
+    this.size = 96,
+    this.showLabel = false,
+    this.iconColor,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +25,9 @@ class NoSmokeLogo extends StatelessWidget {
           child: SvgPicture.asset(
             'assets/images/no_smoke_logo.svg',
             fit: BoxFit.contain,
+            colorFilter: iconColor == null
+                ? null
+                : ColorFilter.mode(iconColor!, BlendMode.srcIn),
             placeholderBuilder: (_) => _buildPlaceholder(logoSize),
           ),
         ),
