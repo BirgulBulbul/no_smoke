@@ -469,6 +469,63 @@ class _HomePageState extends State<HomePage> {
       _notifiedTaskTitles.add(task);
       index += 1;
     }
+
+    await _ensureMinimumFiveNotificationsUntilSleep();
+  }
+
+  Future<void> _ensureMinimumFiveNotificationsUntilSleep() async {
+    if (!_registrationCompleted) {
+      return;
+    }
+
+    final sleep = await _storageService.loadSleepTime();
+    final parts = (sleep ?? '21:00').split(':');
+    final sleepHour = int.tryParse(parts.first) ?? 21;
+    final sleepMinute = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
+    final now = DateTime.now();
+    var sleepAt = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      sleepHour,
+      sleepMinute,
+    );
+    if (!sleepAt.isAfter(now)) {
+      sleepAt = sleepAt.add(const Duration(days: 1));
+    }
+
+    final fallbackTask = _todaysTasks.isNotEmpty
+        ? _todaysTasks.first
+        : context.t('firstTaskNoSmoke15');
+
+    final schedule = <DateTime>[];
+    var cursor = now.add(const Duration(minutes: 10));
+    while (cursor.isBefore(sleepAt) && schedule.length < 5) {
+      schedule.add(cursor);
+      cursor = cursor.add(const Duration(minutes: 45));
+    }
+
+    if (schedule.isEmpty) {
+      return;
+    }
+
+    for (final at in schedule) {
+      final delay = at.difference(DateTime.now());
+      if (delay.inSeconds <= 0) {
+        continue;
+      }
+      await NotificationService.scheduleFirstTaskTriggerNotification(
+        taskDescription: fallbackTask,
+        delay: delay,
+      );
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _nextTaskNotificationText = _formatDateTime(schedule.first);
+    });
   }
 
   Future<void> _refreshNextTaskNotificationInsight(

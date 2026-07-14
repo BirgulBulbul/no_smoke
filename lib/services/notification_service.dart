@@ -37,22 +37,13 @@ class NotificationService {
   static const String _taskStartChannelId = 'task_start_channel_v4';
   static const String _taskFollowUpChannelId = 'task_followup_channel_v5';
   static const String _taskEscalationChannelId = 'task_escalation_channel_v1';
+  static const String _taskBeepChannelId = 'task_beep_channel_v1';
   static const String _breathReminderChannelId = 'breath_reminder_channel_v3';
-  static const int _notificationTimeoutMs = 10000;
+  static const int _notificationTimeoutMs = 5000;
   static const Duration _unansweredReminderDelay = Duration(minutes: 10);
   static final Int64List _taskVibrationPattern = Int64List.fromList(<int>[
     0,
-    1000,
-    500,
-    1000,
-    500,
-    1000,
-    500,
-    1000,
-    500,
-    1000,
-    500,
-    1000,
+    5000,
   ]);
 
   static Stream<Map<String, String>> get taskActionStream =>
@@ -370,6 +361,43 @@ class NotificationService {
     );
   }
 
+  static Future<void> _scheduleCompanionBeeps({
+    required tz.TZDateTime baseAt,
+    required String taskTitle,
+    required String type,
+  }) async {
+    final scheduleMode = await _resolveAndroidScheduleMode();
+    for (var i = 1; i <= 2; i++) {
+      final id =
+          DateTime.now().millisecondsSinceEpoch.remainder(2147483647) + i;
+      final fireAt = baseAt.add(Duration(seconds: i * 2));
+      await _plugin.zonedSchedule(
+        id,
+        '',
+        taskTitle,
+        fireAt,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _taskBeepChannelId,
+            'Gorev bip sesi',
+            importance: Importance.high,
+            priority: Priority.high,
+            playSound: true,
+            enableVibration: false,
+            timeoutAfter: 2500,
+            audioAttributesUsage: AudioAttributesUsage.alarm,
+            category: AndroidNotificationCategory.reminder,
+          ),
+          iOS: const DarwinNotificationDetails(presentSound: true),
+        ),
+        androidScheduleMode: scheduleMode,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: jsonEncode({'type': type, 'taskTitle': taskTitle}),
+      );
+    }
+  }
+
   static Future<void> showFirstTaskTriggerNotification({
     required String taskTitle,
     required String taskDescription,
@@ -424,6 +452,12 @@ class NotificationService {
     final reminderAt = tz.TZDateTime.now(
       tz.local,
     ).add(_unansweredReminderDelay);
+    final now = tz.TZDateTime.now(tz.local);
+    await _scheduleCompanionBeeps(
+      baseAt: now,
+      taskTitle: taskDescription,
+      type: _typeTaskStart,
+    );
     await _scheduleUnansweredTaskUpdateReminder(
       taskTitle: taskTitle,
       type: _typeTaskStart,
@@ -495,6 +529,11 @@ class NotificationService {
       type: _typeTaskStart,
       reminderId: reminderId,
       triggerAt: fireAt.add(_unansweredReminderDelay),
+    );
+    await _scheduleCompanionBeeps(
+      baseAt: fireAt,
+      taskTitle: taskDescription,
+      type: _typeTaskStart,
     );
   }
 
@@ -627,6 +666,11 @@ class NotificationService {
       type: _typeTaskFollowUp,
       reminderId: reminderId,
       triggerAt: fireAt.add(_unansweredReminderDelay),
+    );
+    await _scheduleCompanionBeeps(
+      baseAt: fireAt,
+      taskTitle: taskTitle,
+      type: _typeTaskFollowUp,
     );
   }
 
