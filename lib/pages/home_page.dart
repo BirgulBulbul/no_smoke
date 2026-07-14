@@ -79,7 +79,7 @@ class _HomePageState extends State<HomePage> {
     _taskActionSubscription = NotificationService.taskActionStream.listen(
       _handleTaskNotificationAction,
     );
-mı    _loadHomeMetrics();
+    _loadHomeMetrics();
   }
 
   @override
@@ -202,12 +202,19 @@ mı    _loadHomeMetrics();
       'Bugun 2 sigara eksik ic': context.t('taskSmokeTwoLess'),
       '90 dakika sigarasiz kal': context.t('taskNoSmoke90'),
       '120 dakika sigarasiz kal': context.t('taskNoSmoke120'),
-      'Aksam saatinde destek kisisiyle iletisim kur': context.t('taskContactSupportEvening'),
-      '1 gun sigarasiz kalma gorevi: bugun tum kriz anlarinda sigarayi erteleyin.': context.t('taskPlanOneDayDelayAllCravings'),
-      '1 gun sigarasiz kalma gorevi: ilk sigarayi en az 90 dakika erteleyin.': context.t('taskPlanOneDayDelayFirst90'),
-      '2 gun sigarasiz kalma gorevi: 48 saat boyunca tetikleyicilerde sigarayi erteleyin.': context.t('taskPlanTwoDaysDelayTriggers'),
-      '2 gun sigarasiz kalma plani: kriz aninda 10 derin nefes + su uygulayin.': context.t('taskPlanTwoDaysBreathAndWater'),
-      '1 hafta sigarasiz kalma hedefi: 7 gun boyunca tum gorevleri tamamlayin.': context.t('taskPlanOneWeekCompleteAll'),
+      'Aksam saatinde destek kisisiyle iletisim kur': context.t(
+        'taskContactSupportEvening',
+      ),
+      '1 gun sigarasiz kalma gorevi: bugun tum kriz anlarinda sigarayi erteleyin.':
+          context.t('taskPlanOneDayDelayAllCravings'),
+      '1 gun sigarasiz kalma gorevi: ilk sigarayi en az 90 dakika erteleyin.':
+          context.t('taskPlanOneDayDelayFirst90'),
+      '2 gun sigarasiz kalma gorevi: 48 saat boyunca tetikleyicilerde sigarayi erteleyin.':
+          context.t('taskPlanTwoDaysDelayTriggers'),
+      '2 gun sigarasiz kalma plani: kriz aninda 10 derin nefes + su uygulayin.':
+          context.t('taskPlanTwoDaysBreathAndWater'),
+      '1 hafta sigarasiz kalma hedefi: 7 gun boyunca tum gorevleri tamamlayin.':
+          context.t('taskPlanOneWeekCompleteAll'),
     };
 
     return taskMap[task] ?? task;
@@ -960,7 +967,7 @@ mı    _loadHomeMetrics();
   Widget _buildAdaptiveInsightsCard() {
     final triggers = _riskyTriggers.isEmpty
         ? context.t('noRecordYet')
-      : _riskyTriggers.map(_localizeCanonicalToken).join(', ');
+        : _riskyTriggers.map(_localizeCanonicalToken).join(', ');
     final hours = _riskyHours.isEmpty
         ? context.t('noRecordYet')
         : _riskyHours.join(', ');
@@ -1361,10 +1368,10 @@ mı    _loadHomeMetrics();
   Widget _buildConsecutiveSmokingCard() {
     final latest = _consecutiveSmokingLatestText == 'noRecordYet'
         ? context.t('noRecordYet')
-      : _localizeConsecutiveLabel(_consecutiveSmokingLatestText);
+        : _localizeConsecutiveLabel(_consecutiveSmokingLatestText);
     final status = _consecutiveSmokingStatusText == 'noRecordYet'
         ? context.t('noRecordYet')
-      : _localizeConsecutiveLabel(_consecutiveSmokingStatusText);
+        : _localizeConsecutiveLabel(_consecutiveSmokingStatusText);
     final trend = _consecutiveSmokingTrendText == 'noRecordYet'
         ? context.t('noRecordYet')
         : _consecutiveSmokingTrendText == 'trendStable'

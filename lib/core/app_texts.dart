@@ -1,4 +1,4 @@
-şimport 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 class AppTexts {
   static const Map<String, String> _tr = {

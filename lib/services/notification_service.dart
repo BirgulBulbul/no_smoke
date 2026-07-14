@@ -1,4 +1,4 @@
-importk  'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -10,6 +10,11 @@ import 'package:timezone/timezone.dart' as tz;
 import '../pages/breath_test_page.dart';
 import 'language_service.dart';
 import 'phone_state_service.dart';
+
+@pragma('vm:entry-point')
+void notificationTapBackground(NotificationResponse response) {
+  NotificationService.handleBackgroundNotificationResponse(response);
+}
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin =
@@ -107,6 +112,7 @@ class NotificationService {
     await _plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _handleNotificationResponse,
+      onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
 
     // Request runtime notification permission (Android 13+ and iOS).
@@ -155,6 +161,19 @@ class NotificationService {
   }
 
   static void _handleNotificationResponse(NotificationResponse response) {
+    _processNotificationResponse(response, allowNavigation: true);
+  }
+
+  static void handleBackgroundNotificationResponse(
+    NotificationResponse response,
+  ) {
+    _processNotificationResponse(response, allowNavigation: false);
+  }
+
+  static void _processNotificationResponse(
+    NotificationResponse response, {
+    required bool allowNavigation,
+  }) {
     final payload = _decodePayload(response.payload);
     if (payload == null) {
       return;
@@ -166,7 +185,7 @@ class NotificationService {
     }
 
     final type = payload['type'];
-    if (type == _typeBreath) {
+    if (type == _typeBreath && allowNavigation) {
       final context = _navigatorKey?.currentContext;
       if (context != null) {
         Navigator.of(
@@ -178,11 +197,42 @@ class NotificationService {
 
     if (type == _typeTaskStart || type == _typeTaskFollowUp) {
       final actionId = response.actionId;
-      _taskActionController.add({
+      final event = {
         'type': type ?? '',
         'taskTitle': payload['taskTitle'] ?? '',
         'actionId': actionId ?? '',
-      });
+      };
+
+      if (_taskActionController.hasListener) {
+        _taskActionController.add(event);
+      } else {
+        unawaited(_handleActionWithoutUi(event));
+      }
+    }
+  }
+
+  static Future<void> _handleActionWithoutUi(Map<String, String> event) async {
+    final taskTitle = event['taskTitle']?.trim() ?? '';
+    final actionId = event['actionId']?.trim() ?? '';
+    if (taskTitle.isEmpty || actionId.isEmpty) {
+      return;
+    }
+
+    if (actionId == _actionTaskDone) {
+      final delay = _resolveInitialTaskDelay(taskTitle);
+      await showTaskTimerStartedNotification(
+        taskTitle: taskTitle,
+        duration: delay,
+      );
+      await scheduleTaskFollowUpReminder(taskTitle: taskTitle, delay: delay);
+      return;
+    }
+
+    if (actionId == _actionTaskNotNow) {
+      await scheduleFirstTaskTriggerNotification(
+        taskDescription: taskTitle,
+        delay: const Duration(minutes: 10),
+      );
     }
   }
 
@@ -202,6 +252,32 @@ class NotificationService {
 
   static int _deriveReminderId(int sourceId) {
     return (sourceId + 1000000000).remainder(2147483647);
+  }
+
+  static Duration _resolveInitialTaskDelay(String taskTitle) {
+    final minuteMatch = RegExp(
+      r'(\d+)\s*(dakika|minute|minutes|min)',
+      caseSensitive: false,
+    ).firstMatch(taskTitle);
+    if (minuteMatch != null) {
+      final minutes = int.tryParse(minuteMatch.group(1) ?? '');
+      if (minutes != null && minutes > 0) {
+        return Duration(minutes: minutes);
+      }
+    }
+
+    final hourMatch = RegExp(
+      r'(\d+)\s*(saat|hour|hours)',
+      caseSensitive: false,
+    ).firstMatch(taskTitle);
+    if (hourMatch != null) {
+      final hours = int.tryParse(hourMatch.group(1) ?? '');
+      if (hours != null && hours > 0) {
+        return Duration(hours: hours);
+      }
+    }
+
+    return const Duration(minutes: 30);
   }
 
   static Future<void> _scheduleUnansweredTaskUpdateReminder({
@@ -251,10 +327,7 @@ class NotificationService {
       androidScheduleMode: scheduleMode,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
-      payload: jsonEncode({
-        'type': type,
-        'taskTitle': taskTitle,
-      }),
+      payload: jsonEncode({'type': type, 'taskTitle': taskTitle}),
     );
   }
 
@@ -309,7 +382,9 @@ class NotificationService {
       }),
     );
 
-    final reminderAt = tz.TZDateTime.now(tz.local).add(_unansweredReminderDelay);
+    final reminderAt = tz.TZDateTime.now(
+      tz.local,
+    ).add(_unansweredReminderDelay);
     await _scheduleUnansweredTaskUpdateReminder(
       taskTitle: taskTitle,
       type: _typeTaskStart,
