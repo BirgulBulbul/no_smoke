@@ -69,6 +69,8 @@ class _HomePageState extends State<HomePage> {
   List<String> _riskyHours = const [];
   List<String> _todaysTasks = const [];
   List<String> _coachCommands = const [];
+  Map<String, double> _commandSuccessScores = const {};
+  Map<String, double> _commandCategoryScores = const {};
   List<String> _riskExplanation = const [];
   Map<String, double> _learnedWeights = const {};
   String _consecutiveSmokingLatestText = '...';
@@ -508,6 +510,8 @@ class _HomePageState extends State<HomePage> {
       _progressSummaryText = behavior?.progressSummary ?? 'Stable';
       _todaysTasks = behavior?.todaysTasks ?? const [];
       _coachCommands = behavior?.coachCommands ?? const [];
+      _commandSuccessScores = behavior?.commandSuccessScores ?? const {};
+      _commandCategoryScores = behavior?.commandCategoryScores ?? const {};
       _riskExplanation = behavior?.riskExplanation ?? const [];
       _learnedWeights = behavior?.learnedWeights ?? const {};
       _predictedRiskWindow = behavior?.predictedRiskWindow ?? '...';
@@ -1385,6 +1389,18 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ],
+            if (_coachCommands.isNotEmpty && _commandSuccessScores.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Komut basari puanlari: ${_formatCommandScores(_coachCommands, _commandSuccessScores)}',
+              ),
+            ],
+            if (_commandCategoryScores.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Kategori basari icgorusu: ${_formatCategoryScores(_commandCategoryScores)}',
+              ),
+            ],
             if (_riskExplanation.isNotEmpty) ...[
               const SizedBox(height: 10),
               const Text(
@@ -1803,6 +1819,45 @@ class _HomePageState extends State<HomePage> {
         continue;
       }
       parts.add('${labels[key]}:${value.toStringAsFixed(2)}');
+    }
+    return parts.join(' • ');
+  }
+
+  String _formatCommandScores(
+    List<String> commands,
+    Map<String, double> scores,
+  ) {
+    final parts = <String>[];
+    final take = commands.length < 3 ? commands.length : 3;
+    for (var i = 0; i < take; i++) {
+      final command = commands[i];
+      final score = ((scores[command] ?? 0.5) * 100).round();
+      parts.add('K${i + 1}:%$score');
+    }
+    return parts.join(' • ');
+  }
+
+  String _formatCategoryScores(Map<String, double> scores) {
+    if (scores.isEmpty) {
+      return '-';
+    }
+
+    final labels = {
+      'breath': 'nefes',
+      'delay': 'erteleme',
+      'trigger': 'tetikleyici',
+      'reduction': 'azaltma',
+      'routine': 'rutin',
+    };
+
+    final entries = scores.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final parts = <String>[];
+    final take = entries.length < 3 ? entries.length : 3;
+    for (var i = 0; i < take; i++) {
+      final entry = entries[i];
+      parts.add('${labels[entry.key] ?? entry.key}:%${(entry.value * 100).round()}');
     }
     return parts.join(' • ');
   }

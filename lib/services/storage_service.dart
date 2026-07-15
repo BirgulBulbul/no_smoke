@@ -841,6 +841,24 @@ class StorageService {
         coachCommands: (data['coachCommands'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),
+        commandSuccessScores:
+            (data['commandSuccessScores'] as Map<String, dynamic>? ??
+                    const <String, dynamic>{})
+                .map(
+                  (key, value) => MapEntry(
+                    key,
+                    (value as num?)?.toDouble() ?? 0.5,
+                  ),
+                ),
+        commandCategoryScores:
+            (data['commandCategoryScores'] as Map<String, dynamic>? ??
+                    const <String, dynamic>{})
+                .map(
+                  (key, value) => MapEntry(
+                    key,
+                    (value as num?)?.toDouble() ?? 0.5,
+                  ),
+                ),
         riskExplanation:
             (data['riskExplanation'] as List<dynamic>? ?? const [])
                 .map((item) => item.toString())
@@ -1278,6 +1296,30 @@ class StorageService {
       predictedWindow: prediction['nextRiskWindow']?.toString(),
       predictedTrigger: prediction['nextRiskTrigger']?.toString(),
     );
+    final optimizedCommands = _mentorEngine.optimizeActionCommands(
+      commands: coachCommands,
+      taskHistory: taskHistory,
+      previousScores: existingSnapshot?.commandSuccessScores ??
+          const <String, double>{},
+    );
+    final optimizedCoachCommands =
+        (optimizedCommands['commands'] as List<dynamic>)
+            .map((item) => item.toString())
+            .toList();
+    final commandSuccessScores =
+        (optimizedCommands['scores'] as Map<String, dynamic>).map(
+          (key, value) => MapEntry(key, (value as num).toDouble()),
+        );
+    final commandCategoryScores =
+        (optimizedCommands['categoryScores'] as Map<String, dynamic>).map(
+          (key, value) => MapEntry(key, (value as num).toDouble()),
+        );
+    final balancedCoachCommands = _mentorEngine.rebalanceCommandMix(
+      orderedCommands: optimizedCoachCommands,
+      commandScores: commandSuccessScores,
+      categoryScores: commandCategoryScores,
+      maxCount: 4,
+    );
 
     final riskExplanation = _behaviorEngine.buildRiskExplanation(
       baseRisk: baseRisk,
@@ -1294,7 +1336,9 @@ class StorageService {
       riskyTriggers: riskyTriggers,
       riskyHours: riskyHours,
       todaysTasks: orderedTasks,
-      coachCommands: coachCommands,
+      coachCommands: balancedCoachCommands,
+      commandSuccessScores: commandSuccessScores,
+      commandCategoryScores: commandCategoryScores,
       riskExplanation: riskExplanation,
       learnedWeights: learnedWeights,
       prediction: prediction,
@@ -1309,6 +1353,8 @@ class StorageService {
       'progressSummary': dashboard.progressSummary,
       'todaysTasks': dashboard.todaysTasks,
       'coachCommands': dashboard.coachCommands,
+      'commandSuccessScores': dashboard.commandSuccessScores,
+      'commandCategoryScores': dashboard.commandCategoryScores,
       'riskExplanation': dashboard.riskExplanation,
       'learnedWeights': dashboard.learnedWeights,
       'predictedRiskWindow': dashboard.predictedRiskWindow,

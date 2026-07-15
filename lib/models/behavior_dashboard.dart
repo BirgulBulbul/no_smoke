@@ -10,6 +10,8 @@ class BehaviorDashboard {
   final String progressSummary;
   final List<String> todaysTasks;
   final List<String> coachCommands;
+  final Map<String, double> commandSuccessScores;
+  final Map<String, double> commandCategoryScores;
   final List<String> riskExplanation;
   final Map<String, double> learnedWeights;
   final String predictedRiskWindow;
@@ -27,6 +29,8 @@ class BehaviorDashboard {
     required this.progressSummary,
     required this.todaysTasks,
     required this.coachCommands,
+    required this.commandSuccessScores,
+    required this.commandCategoryScores,
     required this.riskExplanation,
     required this.learnedWeights,
     required this.predictedRiskWindow,
