@@ -100,6 +100,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
   String? _updatedBreakStart2;
   String? _updatedBreakEnd2;
   String _updatedWeekendSmokingPattern = 'Ayni';
+  String _durationBarrierPreference = 'Farketmez';
+  String _durationBarrierFrequencyPreference = 'Orta';
 
   static const List<Map<String, String>> _workDayOptions = [
     {'key': 'Mon', 'label': 'Pzt'},
@@ -447,6 +449,10 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         'weekendSmokingPattern': _profileContextChanged
             ? _updatedWeekendSmokingPattern
             : null,
+      },
+      'durationBarrier': {
+        'preference': _durationBarrierPreference,
+        'frequencyPreference': _durationBarrierFrequencyPreference,
       },
     };
   }
@@ -1715,6 +1721,63 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
               const SizedBox(height: 10),
               _buildQuickRespiratoryMiniCard(),
             ],
+            const SizedBox(height: 20),
+            const Divider(thickness: 2),
+            const SizedBox(height: 20),
+            const Text(
+              'Süre Bariyeri Tercihi',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _durationBarrierPreference,
+              decoration: const InputDecoration(
+                labelText: 'Süre bariyerlerini nasıl buluyorsun?',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: 'Begeniyorum',
+                  child: Text('Beğeniyorum'),
+                ),
+                DropdownMenuItem(
+                  value: 'Farketmez',
+                  child: Text('Farketmez'),
+                ),
+                DropdownMenuItem(
+                  value: 'Begenmiyorum',
+                  child: Text('Beğenmiyorum'),
+                ),
+                DropdownMenuItem(
+                  value: 'Istemiyorum',
+                  child: Text('İstemiyorum'),
+                ),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _durationBarrierPreference = value ?? 'Farketmez';
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+            if (_durationBarrierPreference != 'Istemiyorum')
+              DropdownButtonFormField<String>(
+                value: _durationBarrierFrequencyPreference,
+                decoration: const InputDecoration(
+                  labelText: 'Süre bariyeri sıklığı nasıl olmalı?',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'Az', child: Text('Az')),
+                  DropdownMenuItem(value: 'Orta', child: Text('Orta')),
+                  DropdownMenuItem(value: 'Cok', child: Text('Çok')),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    _durationBarrierFrequencyPreference = value ?? 'Orta';
+                  });
+                },
+              ),
             ConsecutiveSmokingSection(
               consecutiveSmokingHabit: _consecutiveSmokingHabit,
               consecutiveSmokingCount: _consecutiveSmokingCount,
