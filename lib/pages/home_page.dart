@@ -71,6 +71,7 @@ class _HomePageState extends State<HomePage> {
   List<String> _coachCommands = const [];
   Map<String, double> _commandSuccessScores = const {};
   Map<String, double> _commandCategoryScores = const {};
+  String _commandMixMode = 'balanced';
   List<String> _riskExplanation = const [];
   Map<String, double> _learnedWeights = const {};
   String _consecutiveSmokingLatestText = '...';
@@ -512,6 +513,7 @@ class _HomePageState extends State<HomePage> {
       _coachCommands = behavior?.coachCommands ?? const [];
       _commandSuccessScores = behavior?.commandSuccessScores ?? const {};
       _commandCategoryScores = behavior?.commandCategoryScores ?? const {};
+      _commandMixMode = behavior?.commandMixMode ?? 'balanced';
       _riskExplanation = behavior?.riskExplanation ?? const [];
       _learnedWeights = behavior?.learnedWeights ?? const {};
       _predictedRiskWindow = behavior?.predictedRiskWindow ?? '...';
@@ -1369,6 +1371,13 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 6),
             Text('${context.t('weeklyRiskTarget')}: $_weeklyRiskTarget / 100'),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Text('Komut modu: '),
+                _buildCommandMixBadge(_commandMixMode),
+              ],
+            ),
             if (_learnedWeights.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(
@@ -1860,5 +1869,43 @@ class _HomePageState extends State<HomePage> {
       parts.add('${labels[entry.key] ?? entry.key}:%${(entry.value * 100).round()}');
     }
     return parts.join(' • ');
+  }
+
+  Widget _buildCommandMixBadge(String mode) {
+    final normalized = mode.trim().toLowerCase();
+    final label = normalized == 'aggressive'
+        ? 'Agresif'
+        : normalized == 'protective'
+        ? 'Koruyucu'
+        : 'Dengeli';
+
+    final background = normalized == 'aggressive'
+        ? Colors.red.withValues(alpha: 0.18)
+        : normalized == 'protective'
+        ? Colors.lightGreen.withValues(alpha: 0.18)
+        : Colors.blue.withValues(alpha: 0.18);
+
+    final foreground = normalized == 'aggressive'
+        ? Colors.redAccent
+        : normalized == 'protective'
+        ? Colors.lightGreenAccent
+        : Colors.lightBlueAccent;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: foreground.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: foreground,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
   }
 }

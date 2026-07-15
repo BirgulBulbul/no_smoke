@@ -169,6 +169,7 @@ class MentorEngine {
 		required List<String> orderedCommands,
 		required Map<String, double> commandScores,
 		required Map<String, double> categoryScores,
+		required String mode,
 		int maxCount = 4,
 	}) {
 		if (orderedCommands.isEmpty) {
@@ -204,7 +205,12 @@ class MentorEngine {
 		final maxItems = maxCount < orderedCommands.length
 			? maxCount
 			: orderedCommands.length;
-		final topCategory = sortedCategories.first;
+		final priorityCategories = _modePriorityCategories(
+			mode: mode,
+			sortedCategories: sortedCategories,
+			weakestCategories: weakestCategories,
+		);
+		final topCategory = priorityCategories.first;
 		final weakestCategory = weakestCategories.first;
 		final selected = <String>[];
 
@@ -224,16 +230,22 @@ class MentorEngine {
 			return added;
 		}
 
-		final topQuota = maxItems >= 4 ? 2 : 1;
+		final topQuota = mode == 'aggressive'
+			? (maxItems >= 4 ? 3 : 2)
+			: mode == 'protective'
+			? 1
+			: (maxItems >= 4 ? 2 : 1);
 		pullFromCategory(topCategory, topQuota);
 
-		if (weakestCategory != topCategory && selected.length < maxItems) {
+		if (mode != 'aggressive' &&
+			weakestCategory != topCategory &&
+			selected.length < maxItems) {
 			pullFromCategory(weakestCategory, 1);
 		}
 
 		while (selected.length < maxItems) {
 			var progressed = false;
-			for (final category in sortedCategories) {
+			for (final category in priorityCategories) {
 				final added = pullFromCategory(category, 1);
 				if (added > 0) {
 					progressed = true;
@@ -260,6 +272,61 @@ class MentorEngine {
 		}
 
 		return selected;
+	}
+
+	List<String> _modePriorityCategories({
+		required String mode,
+		required List<String> sortedCategories,
+		required List<String> weakestCategories,
+	}) {
+		if (sortedCategories.isEmpty) {
+			return const <String>[];
+		}
+
+		if (mode == 'aggressive') {
+			final first = <String>[];
+			for (final support in const ['trigger', 'breath', 'delay']) {
+				if (sortedCategories.contains(support)) {
+					first.add(support);
+				}
+			}
+			for (final category in sortedCategories) {
+				if (!first.contains(category)) {
+					first.add(category);
+				}
+			}
+			return first;
+		}
+
+		if (mode == 'protective') {
+			final first = <String>[];
+			for (final stable in const ['routine', 'delay', 'reduction']) {
+				if (sortedCategories.contains(stable)) {
+					first.add(stable);
+				}
+			}
+			for (final category in sortedCategories) {
+				if (!first.contains(category)) {
+					first.add(category);
+				}
+			}
+			return first;
+		}
+
+		final mixed = <String>[];
+		if (sortedCategories.isNotEmpty) {
+			mixed.add(sortedCategories.first);
+		}
+		if (weakestCategories.isNotEmpty &&
+			!mixed.contains(weakestCategories.first)) {
+			mixed.add(weakestCategories.first);
+		}
+		for (final category in sortedCategories) {
+			if (!mixed.contains(category)) {
+				mixed.add(category);
+			}
+		}
+		return mixed;
 	}
 
 	Map<String, double> _deriveCategoryScores(

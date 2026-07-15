@@ -859,6 +859,7 @@ class StorageService {
                     (value as num?)?.toDouble() ?? 0.5,
                   ),
                 ),
+        commandMixMode: data['commandMixMode']?.toString() ?? 'balanced',
         riskExplanation:
             (data['riskExplanation'] as List<dynamic>? ?? const [])
                 .map((item) => item.toString())
@@ -1314,10 +1315,17 @@ class StorageService {
         (optimizedCommands['categoryScores'] as Map<String, dynamic>).map(
           (key, value) => MapEntry(key, (value as num).toDouble()),
         );
+    final commandMixMode = _resolveCommandMixMode(
+      riskScore: dynamicRisk,
+      weeklyRiskTarget: adaptivePlan.weeklyRiskTarget,
+      recentSuccessCount: recentSuccessCount,
+      recentFailureCount: recentFailureCount,
+    );
     final balancedCoachCommands = _mentorEngine.rebalanceCommandMix(
       orderedCommands: optimizedCoachCommands,
       commandScores: commandSuccessScores,
       categoryScores: commandCategoryScores,
+      mode: commandMixMode,
       maxCount: 4,
     );
 
@@ -1329,6 +1337,7 @@ class StorageService {
       taskAdjustment: taskAdjustment,
       finalRisk: dynamicRisk,
     );
+    riskExplanation.add('Komut dengeleme modu: $commandMixMode');
 
     final dashboard = _behaviorEngine.buildDashboard(
       riskScore: dynamicRisk,
@@ -1339,6 +1348,7 @@ class StorageService {
       coachCommands: balancedCoachCommands,
       commandSuccessScores: commandSuccessScores,
       commandCategoryScores: commandCategoryScores,
+      commandMixMode: commandMixMode,
       riskExplanation: riskExplanation,
       learnedWeights: learnedWeights,
       prediction: prediction,
@@ -1355,6 +1365,7 @@ class StorageService {
       'coachCommands': dashboard.coachCommands,
       'commandSuccessScores': dashboard.commandSuccessScores,
       'commandCategoryScores': dashboard.commandCategoryScores,
+      'commandMixMode': dashboard.commandMixMode,
       'riskExplanation': dashboard.riskExplanation,
       'learnedWeights': dashboard.learnedWeights,
       'predictedRiskWindow': dashboard.predictedRiskWindow,
@@ -1390,6 +1401,26 @@ class StorageService {
       adjustment += item.completed ? -2 : 3;
     }
     return adjustment.clamp(-6, 12);
+  }
+
+  String _resolveCommandMixMode({
+    required int riskScore,
+    required int weeklyRiskTarget,
+    required int recentSuccessCount,
+    required int recentFailureCount,
+  }) {
+    final targetGap = riskScore - weeklyRiskTarget;
+    if (riskScore >= 70 || targetGap >= 15 || recentFailureCount > recentSuccessCount) {
+      return 'aggressive';
+    }
+
+    if (riskScore <= 45 &&
+        targetGap <= 5 &&
+        recentSuccessCount >= recentFailureCount + 2) {
+      return 'protective';
+    }
+
+    return 'balanced';
   }
 
   bool _isWithinWindow({
