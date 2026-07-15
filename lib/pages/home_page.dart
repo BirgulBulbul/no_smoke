@@ -89,6 +89,7 @@ class _HomePageState extends State<HomePage> {
   int _recentSuccessCount = 0;
   int _recentFailureCount = 0;
   String _nextTaskNotificationText = '...';
+  String _notificationContextReasonText = '...';
   double _weeklyAverage = 0;
   double _monthlyAverage = 0;
   double _dailyAverage = 0;
@@ -456,6 +457,8 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadHomeMetrics() async {
     final registrationCompleted = await _storageService
         .loadInitialRegistrationCompleted();
+    final notificationContextReason =
+      await _storageService.loadSetting('last_notification_context_reason');
     final lastDate = await _storageService.loadLastSurveyDate();
     final latestBreath = await _storageService.loadLatestBreathRecord();
     final metrics = await _storageService.loadBreathMetrics();
@@ -545,6 +548,11 @@ class _HomePageState extends State<HomePage> {
       _failedTaskCount = taskOutcomeSummary['failureCount'] ?? 0;
       _recentSuccessCount = taskOutcomeSummary['recentSuccessCount'] ?? 0;
       _recentFailureCount = taskOutcomeSummary['recentFailureCount'] ?? 0;
+      _notificationContextReasonText =
+          (notificationContextReason == null ||
+              notificationContextReason.trim().isEmpty)
+          ? context.t('taskReasonNoPlanned')
+          : notificationContextReason;
       for (final task in _todaysTasks) {
         _taskStates.putIfAbsent(task, () => 'new');
       }
@@ -1737,6 +1745,8 @@ class _HomePageState extends State<HomePage> {
             Text(
               '${context.t('taskReasonNextNotification')}: $_nextTaskNotificationText',
             ),
+            const SizedBox(height: 6),
+            Text('Bildirim baglam nedeni: $_notificationContextReasonText'),
             const SizedBox(height: 6),
             Text(
               '${context.t('taskReasonCause')}:',

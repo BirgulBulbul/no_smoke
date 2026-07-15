@@ -67,6 +67,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
   int _weeklyCompletionRate = 6;
   String _dailyTaskAdherenceLevel = 'orta';
   String _commandBurdenLevel = 'orta';
+  String _lunchTime = '12:30';
+  String _dinnerTime = '19:00';
 
   String get _resolvedPacksPerDay {
     if (_packOption == '3+ paket') {
@@ -131,6 +133,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
       stressLevel: _mood,
       weeklyPayload: weeklyPayload,
     );
+    await _storageService.saveSetting('lunch_time', _lunchTime);
+    await _storageService.saveSetting('dinner_time', _dinnerTime);
 
     await _storageService.saveUserProfileSnapshot(
       UserProfileSnapshot(
@@ -194,6 +198,10 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         'dailyTaskAdherenceLevel': _dailyTaskAdherenceLevel,
         'commandBurdenLevel': _commandBurdenLevel,
         'mostHelpfulCategory': 'breath',
+      },
+      'mealSchedule': {
+        'lunchTime': _lunchTime,
+        'dinnerTime': _dinnerTime,
       },
     };
   }
@@ -282,7 +290,23 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         'commandBurdenLevel': isBad ? 'cok' : 'orta',
         'mostHelpfulCategory': 'breath',
       },
+      'mealSchedule': {
+        'lunchTime': _lunchTime,
+        'dinnerTime': _dinnerTime,
+      },
     };
+  }
+
+  List<String> _timeOptions() {
+    final options = <String>[];
+    for (var hour = 6; hour <= 23; hour++) {
+      for (final minute in const [0, 30]) {
+        final hh = hour.toString().padLeft(2, '0');
+        final mm = minute.toString().padLeft(2, '0');
+        options.add('$hh:$mm');
+      }
+    }
+    return options;
   }
 
   int _estimatedDailyCigarettes(String packOption) {
@@ -806,6 +830,42 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
                 ],
                 onChanged: (value) =>
                     setState(() => _commandBurdenLevel = value ?? 'orta'),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _lunchTime,
+                decoration: const InputDecoration(
+                  labelText: 'Tahmini ogle yemegi saati',
+                  border: OutlineInputBorder(),
+                ),
+                items: _timeOptions()
+                    .map(
+                      (time) => DropdownMenuItem<String>(
+                        value: time,
+                        child: Text(time),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) =>
+                    setState(() => _lunchTime = value ?? '12:30'),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _dinnerTime,
+                decoration: const InputDecoration(
+                  labelText: 'Tahmini aksam yemegi saati',
+                  border: OutlineInputBorder(),
+                ),
+                items: _timeOptions()
+                    .map(
+                      (time) => DropdownMenuItem<String>(
+                        value: time,
+                        child: Text(time),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) =>
+                    setState(() => _dinnerTime = value ?? '19:00'),
               ),
             ] else ...[
               const SizedBox(height: 10),

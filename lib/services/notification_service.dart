@@ -438,6 +438,13 @@ class NotificationService {
     final interruptionContext = await _resolveInterruptionContext();
     final contextLabel =
         interruptionContext['contextLabel']?.toString() ?? 'normal';
+    final confidence =
+      (interruptionContext['confidence'] as num?)?.toDouble() ?? 0.0;
+    await _persistNotificationContext(
+      code: code,
+      contextLabel: contextLabel,
+      confidence: confidence,
+    );
     final adjustedDescription = contextLabel == 'eating'
         ? _text(code, 'postMealShieldCommand')
         : taskDescription;
@@ -520,6 +527,13 @@ class NotificationService {
         (interruptionContext['recommendedDeferralMinutes'] as int?) ?? 0;
     final contextLabel =
         interruptionContext['contextLabel']?.toString() ?? 'normal';
+    final confidence =
+      (interruptionContext['confidence'] as num?)?.toDouble() ?? 0.0;
+    await _persistNotificationContext(
+      code: code,
+      contextLabel: contextLabel,
+      confidence: confidence,
+    );
     final now = tz.TZDateTime.now(tz.local);
     final fireAt = now.add(delay).add(Duration(minutes: extraDelay));
     final adjustedDescription = contextLabel == 'eating'
@@ -621,6 +635,13 @@ class NotificationService {
         (interruptionContext['recommendedDeferralMinutes'] as int?) ?? 0;
     final contextLabel =
         interruptionContext['contextLabel']?.toString() ?? 'normal';
+    final confidence =
+      (interruptionContext['confidence'] as num?)?.toDouble() ?? 0.0;
+    await _persistNotificationContext(
+      code: code,
+      contextLabel: contextLabel,
+      confidence: confidence,
+    );
     if (extraDelay > 0) {
       finalDate = finalDate.add(Duration(minutes: extraDelay));
     }
@@ -670,6 +691,13 @@ class NotificationService {
         (interruptionContext['recommendedDeferralMinutes'] as int?) ?? 0;
     final contextLabel =
         interruptionContext['contextLabel']?.toString() ?? 'normal';
+    final confidence =
+      (interruptionContext['confidence'] as num?)?.toDouble() ?? 0.0;
+    await _persistNotificationContext(
+      code: code,
+      contextLabel: contextLabel,
+      confidence: confidence,
+    );
     var fireAt = now.add(delay).add(Duration(minutes: extraDelay));
 
     final followUpBody = contextLabel == 'driving'
@@ -845,6 +873,15 @@ class NotificationService {
     final interruptionContext = await _resolveInterruptionContext();
     final extraDelay =
       (interruptionContext['recommendedDeferralMinutes'] as int?) ?? 0;
+    final contextLabel =
+        interruptionContext['contextLabel']?.toString() ?? 'normal';
+    final confidence =
+        (interruptionContext['confidence'] as num?)?.toDouble() ?? 0.0;
+    await _persistNotificationContext(
+      code: code,
+      contextLabel: contextLabel,
+      confidence: confidence,
+    );
 
     final maxCount = commands.length < 3 ? commands.length : 3;
     for (var i = 0; i < maxCount; i++) {
@@ -910,9 +947,49 @@ class NotificationService {
         'isRunningOrWorkout': false,
         'isEatingLikely': false,
         'recommendedDeferralMinutes': 0,
+        'confidence': 0.0,
         'contextLabel': 'normal',
       };
     }
+  }
+
+  static Future<void> _persistNotificationContext({
+    required String code,
+    required String contextLabel,
+    required double confidence,
+  }) async {
+    try {
+      final storage = StorageService();
+      final confidencePct = (confidence * 100).round().clamp(0, 100);
+      await storage.saveSetting('last_notification_context_label', contextLabel);
+      await storage.saveSetting(
+        'last_notification_context_confidence',
+        confidencePct.toString(),
+      );
+      await storage.saveSetting(
+        'last_notification_context_reason',
+        _contextReasonText(code, contextLabel, confidencePct),
+      );
+    } catch (_) {
+      // Best effort only.
+    }
+  }
+
+  static String _contextReasonText(
+    String code,
+    String contextLabel,
+    int confidencePct,
+  ) {
+    if (contextLabel == 'driving') {
+      return '${_text(code, 'contextReasonDriving')} (%$confidencePct)';
+    }
+    if (contextLabel == 'workout') {
+      return '${_text(code, 'contextReasonWorkout')} (%$confidencePct)';
+    }
+    if (contextLabel == 'eating') {
+      return '${_text(code, 'contextReasonEating')} (%$confidencePct)';
+    }
+    return _text(code, 'contextReasonNormal');
   }
 
   static DateTime? _parseWindowStart(String? predictedRiskWindow) {
@@ -968,6 +1045,13 @@ class NotificationService {
           'Yemek sonrasi sigara istegini yonetebildiniz mi?',
         'postMealShieldCommand':
           'Yemek sonrasi 10 dakika ertele + su + sakiz rutini uygula.',
+          'contextReasonDriving':
+            'Bildirim surus/ulasim durumu nedeniyle ertelendi',
+          'contextReasonWorkout':
+            'Bildirim kosu/egzersiz durumu nedeniyle ertelendi',
+          'contextReasonEating':
+            'Bildirim yemek penceresi nedeniyle yemek sonrasina kaydirildi',
+          'contextReasonNormal': 'Bildirim normal plana gore ayarlandi',
       'taskTimerStartedTitle': 'İlk Görev',
       'taskTimerStartedBody': 'Görev başladı:',
       'taskEscalationTitle': 'Gorev guncellendi',
@@ -1010,6 +1094,13 @@ class NotificationService {
           'After the meal window, did you manage the urge without smoking?',
         'postMealShieldCommand':
           'After meal: delay 10 minutes, drink water, and use gum.',
+          'contextReasonDriving':
+            'Notification deferred due to driving/transport context',
+          'contextReasonWorkout':
+            'Notification deferred due to running/workout context',
+          'contextReasonEating':
+            'Notification shifted to post-meal anti-smoking window',
+          'contextReasonNormal': 'Notification scheduled in normal mode',
       'taskTimerStartedTitle': 'First Task',
       'taskTimerStartedBody': 'Task started:',
       'taskEscalationTitle': 'Task updated',
