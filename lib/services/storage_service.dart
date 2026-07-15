@@ -46,7 +46,7 @@ class StorageService {
     final path = p.join(documentsDirectory.path, 'no_smoke.db');
     return openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE $_tableName (
@@ -119,11 +119,32 @@ class StorageService {
         workStart TEXT,
         workEnd TEXT,
         workplaceSmokingRule TEXT,
+        workingDaysJson TEXT,
+        breakWindowsJson TEXT,
+        weekendSmokingPattern TEXT,
         weeklyJson TEXT,
         createdAt TEXT NOT NULL
       )
     ''');
     await _ensureTableColumn(db, _surveyDetailsTable, 'weeklyJson', 'TEXT');
+    await _ensureTableColumn(
+      db,
+      _surveyDetailsTable,
+      'workingDaysJson',
+      'TEXT',
+    );
+    await _ensureTableColumn(
+      db,
+      _surveyDetailsTable,
+      'breakWindowsJson',
+      'TEXT',
+    );
+    await _ensureTableColumn(
+      db,
+      _surveyDetailsTable,
+      'weekendSmokingPattern',
+      'TEXT',
+    );
   }
 
   Future<void> _ensureProfileSnapshotTable(Database db) async {
@@ -303,6 +324,9 @@ class StorageService {
     String? workStart,
     String? workEnd,
     String? workplaceSmokingRule,
+    List<String>? workingDays,
+    List<Map<String, String>>? breakWindows,
+    String? weekendSmokingPattern,
     Map<String, dynamic>? weeklyPayload,
   }) async {
     try {
@@ -321,6 +345,11 @@ class StorageService {
         'workStart': workStart,
         'workEnd': workEnd,
         'workplaceSmokingRule': workplaceSmokingRule,
+        'workingDaysJson': workingDays == null ? null : jsonEncode(workingDays),
+        'breakWindowsJson': breakWindows == null
+            ? null
+            : jsonEncode(breakWindows),
+        'weekendSmokingPattern': weekendSmokingPattern,
         'weeklyJson': weeklyPayload == null ? null : jsonEncode(weeklyPayload),
         'createdAt': DateTime.now().toIso8601String(),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -363,6 +392,8 @@ class StorageService {
       final recordId = row['recordId'] as String;
       final healthRaw = row['healthJson'] as String?;
       final weeklyRaw = row['weeklyJson'] as String?;
+      final workingDaysRaw = row['workingDaysJson'] as String?;
+      final breakWindowsRaw = row['breakWindowsJson'] as String?;
       final healthConditions = healthRaw == null || healthRaw.isEmpty
           ? <String>[]
           : (jsonDecode(healthRaw) as List<dynamic>)
@@ -371,6 +402,22 @@ class StorageService {
       final weeklyPayload = weeklyRaw == null || weeklyRaw.isEmpty
           ? <String, dynamic>{}
           : (jsonDecode(weeklyRaw) as Map<String, dynamic>);
+      final workingDays = workingDaysRaw == null || workingDaysRaw.isEmpty
+          ? <String>[]
+          : (jsonDecode(workingDaysRaw) as List<dynamic>)
+                .map((item) => item.toString())
+                .toList();
+      final breakWindows = breakWindowsRaw == null || breakWindowsRaw.isEmpty
+          ? <Map<String, String>>[]
+          : (jsonDecode(breakWindowsRaw) as List<dynamic>)
+                .whereType<Map<String, dynamic>>()
+                .map(
+                  (item) => {
+                    'start': item['start']?.toString() ?? '',
+                    'end': item['end']?.toString() ?? '',
+                  },
+                )
+                .toList();
 
       result[recordId] = {
         'profession': row['profession'] as String?,
@@ -379,6 +426,9 @@ class StorageService {
         'workStart': row['workStart'] as String?,
         'workEnd': row['workEnd'] as String?,
         'workplaceSmokingRule': row['workplaceSmokingRule'] as String?,
+        'workingDays': workingDays,
+        'breakWindows': breakWindows,
+        'weekendSmokingPattern': row['weekendSmokingPattern'] as String?,
         'firstCigaretteRange': row['firstCigaretteRange'] as String?,
         'smokeFreeRange': row['smokeFreeRange'] as String?,
         'stressLevel': row['stressLevel'] as String?,
@@ -789,7 +839,9 @@ class StorageService {
     return null;
   }
 
-  Future<bool> isWeeklySurveyOverdue({Duration maxAge = const Duration(days: 7)}) async {
+  Future<bool> isWeeklySurveyOverdue({
+    Duration maxAge = const Duration(days: 7),
+  }) async {
     final lastSurveyDate = await loadLastWeeklyOrInitialSurveyDate();
     if (lastSurveyDate == null) {
       return false;
@@ -876,52 +928,46 @@ class StorageService {
       todaysTasks: (data['todaysTasks'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),
-        coachCommands: (data['coachCommands'] as List<dynamic>? ?? const [])
+      coachCommands: (data['coachCommands'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),
-        durationBarrierCommands:
-            (data['durationBarrierCommands'] as List<dynamic>? ?? const [])
-                .map((item) => item.toString())
-                .toList(),
-        commandSuccessScores:
-            (data['commandSuccessScores'] as Map<String, dynamic>? ??
-                    const <String, dynamic>{})
-                .map(
-                  (key, value) => MapEntry(
-                    key,
-                    (value as num?)?.toDouble() ?? 0.5,
-                  ),
-                ),
-        commandCategoryScores:
-            (data['commandCategoryScores'] as Map<String, dynamic>? ??
-                    const <String, dynamic>{})
-                .map(
-                  (key, value) => MapEntry(
-                    key,
-                    (value as num?)?.toDouble() ?? 0.5,
-                  ),
-                ),
-        commandMixMode: data['commandMixMode']?.toString() ?? 'balanced',
-          weeklySurveyRiskScore:
-            (data['weeklySurveyRiskScore'] as num?)?.toInt() ?? 40,
-          weeklySurveyRiskLevel:
-            data['weeklySurveyRiskLevel']?.toString() ?? 'medium',
-          weeklyTopRiskDrivers:
-            (data['weeklyTopRiskDrivers'] as List<dynamic>? ?? const [])
+      durationBarrierCommands:
+          (data['durationBarrierCommands'] as List<dynamic>? ?? const [])
               .map((item) => item.toString())
               .toList(),
-        riskExplanation:
-            (data['riskExplanation'] as List<dynamic>? ?? const [])
-                .map((item) => item.toString())
-                .toList(),
-        learnedWeights: (data['learnedWeights'] as Map<String, dynamic>? ??
-                const <String, dynamic>{})
-            .map(
-              (key, value) => MapEntry(
-                key,
-                (value as num?)?.toDouble() ?? 1.0,
+      commandSuccessScores:
+          (data['commandSuccessScores'] as Map<String, dynamic>? ??
+                  const <String, dynamic>{})
+              .map(
+                (key, value) =>
+                    MapEntry(key, (value as num?)?.toDouble() ?? 0.5),
               ),
-            ),
+      commandCategoryScores:
+          (data['commandCategoryScores'] as Map<String, dynamic>? ??
+                  const <String, dynamic>{})
+              .map(
+                (key, value) =>
+                    MapEntry(key, (value as num?)?.toDouble() ?? 0.5),
+              ),
+      commandMixMode: data['commandMixMode']?.toString() ?? 'balanced',
+      weeklySurveyRiskScore:
+          (data['weeklySurveyRiskScore'] as num?)?.toInt() ?? 40,
+      weeklySurveyRiskLevel:
+          data['weeklySurveyRiskLevel']?.toString() ?? 'medium',
+      weeklyTopRiskDrivers:
+          (data['weeklyTopRiskDrivers'] as List<dynamic>? ?? const [])
+              .map((item) => item.toString())
+              .toList(),
+      riskExplanation: (data['riskExplanation'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      learnedWeights:
+          (data['learnedWeights'] as Map<String, dynamic>? ??
+                  const <String, dynamic>{})
+              .map(
+                (key, value) =>
+                    MapEntry(key, (value as num?)?.toDouble() ?? 1.0),
+              ),
       predictedRiskWindow:
           data['predictedRiskWindow']?.toString() ?? '20:00-22:00',
       predictionConfidence:
@@ -1041,22 +1087,36 @@ class StorageService {
   Future<Map<String, dynamic>> loadLatestTaskTimingContext() async {
     final relevantSurveyRecords = await _loadRelevantSurveyRecords();
     final contextMap = await loadSurveyContextByRecordId();
-    final latestSurvey = relevantSurveyRecords.isEmpty
-        ? null
-        : relevantSurveyRecords.last;
-    final surveyContext = latestSurvey == null
-        ? null
-        : contextMap[latestSurvey.id];
+    final mergedProfileContext = _buildMergedProfileContext(
+      surveyRecords: relevantSurveyRecords,
+      contextMap: contextMap,
+    );
     final sensorEvents = await loadRecentSensorUsage(limit: 1);
     final latestSensor = sensorEvents.isEmpty ? null : sensorEvents.last;
     final now = DateTime.now();
 
-    final sleepTime = surveyContext?['sleepTime'] as String?;
-    final wakeTime = surveyContext?['wakeTime'] as String?;
-    final workStart = surveyContext?['workStart'] as String?;
-    final workEnd = surveyContext?['workEnd'] as String?;
+    final sleepTime = mergedProfileContext['sleepTime'] as String?;
+    final wakeTime = mergedProfileContext['wakeTime'] as String?;
+    final workStartRaw = mergedProfileContext['workStart'] as String?;
+    final workEndRaw = mergedProfileContext['workEnd'] as String?;
+    final inferredWork = _inferWorkWindow(
+      wakeTime: wakeTime,
+      workStart: workStartRaw,
+      workEnd: workEndRaw,
+    );
+    final workStart = inferredWork['workStart'];
+    final workEnd = inferredWork['workEnd'];
     final workplaceSmokingRule =
-        surveyContext?['workplaceSmokingRule'] as String?;
+        mergedProfileContext['workplaceSmokingRule'] as String?;
+    final workingDays =
+        (mergedProfileContext['workingDays'] as List<String>? ??
+                const <String>[])
+            .toSet();
+    final breakWindows =
+        (mergedProfileContext['breakWindows'] as List<Map<String, String>>? ??
+        const <Map<String, String>>[]);
+    final weekendSmokingPattern = mergedProfileContext['weekendSmokingPattern']
+        ?.toString();
 
     final isPhoneBusy =
         latestSensor != null &&
@@ -1078,10 +1138,31 @@ class StorageService {
       startTime: sleepTime,
       endTime: wakeTime,
     );
-    final isWorkWindow = _isWithinWindow(
+    final todayKey = _weekdayKey(now.weekday);
+    final isWeekend =
+        now.weekday == DateTime.saturday || now.weekday == DateTime.sunday;
+    final effectiveWorkingDays = workingDays.isEmpty
+        ? <String>{'Mon', 'Tue', 'Wed', 'Thu', 'Fri'}
+        : workingDays;
+    final isTodayWorkingDay = effectiveWorkingDays.isEmpty
+        ? !isWeekend
+        : effectiveWorkingDays.contains(todayKey);
+    final rawWorkWindow = _isWithinWindow(
       now: now,
       startTime: workStart,
       endTime: workEnd,
+    );
+    final isWorkWindow = isTodayWorkingDay && rawWorkWindow;
+    final isBreakWindow = breakWindows.any(
+      (window) => _isWithinWindow(
+        now: now,
+        startTime: window['start'],
+        endTime: window['end'],
+      ),
+    );
+    final minutesUntilNextBreak = _minutesUntilNextBreak(
+      now: now,
+      breakWindows: breakWindows,
     );
 
     return {
@@ -1090,11 +1171,18 @@ class StorageService {
       'workStart': workStart,
       'workEnd': workEnd,
       'workplaceSmokingRule': workplaceSmokingRule,
+      'workingDays': effectiveWorkingDays.toList(),
+      'breakWindows': breakWindows,
+      'weekendSmokingPattern': weekendSmokingPattern,
       'isPhoneBusy': isPhoneBusy,
       'isLongIdle': isLongIdle,
       'isDriving': isDriving,
       'isSleepWindow': isSleepWindow,
       'isWorkWindow': isWorkWindow,
+      'isTodayWorkingDay': isTodayWorkingDay,
+      'isBreakWindow': isBreakWindow,
+      'minutesUntilNextBreak': minutesUntilNextBreak,
+      'isWeekend': isWeekend,
       'isActiveDuringSleep': isSleepWindow && isPhoneBusy,
       'minutesUntilWake': _minutesUntilWindowEnds(now: now, endTime: wakeTime),
       'minutesUntilWorkEnd': _minutesUntilWindowEnds(
@@ -1229,15 +1317,17 @@ class StorageService {
     final baseRisk = records.isEmpty ? 40 : records.last.riskScore;
 
     final latestSurvey = surveyRecords.isNotEmpty ? surveyRecords.last : null;
-    final latestContext = latestSurvey == null
-        ? null
-        : contextMap[latestSurvey.id];
+    final mergedProfileContext = _buildMergedProfileContext(
+      surveyRecords: surveyRecords,
+      contextMap: contextMap,
+    );
+    final latestContext = mergedProfileContext;
     final profileAdjustment = _behaviorEngine.calculateProfileRiskAdjustment(
-      profession: latestContext?['profession'] as String?,
-      sleepTime: latestContext?['sleepTime'] as String?,
-      wakeTime: latestContext?['wakeTime'] as String?,
+      profession: latestContext['profession'] as String?,
+      sleepTime: latestContext['sleepTime'] as String?,
+      wakeTime: latestContext['wakeTime'] as String?,
       healthConditions:
-          (latestContext?['healthConditions'] as List<String>?) ??
+          (latestContext['healthConditions'] as List<String>?) ??
           const <String>[],
       packsPerDay: latestSurvey?.packsPerDay ?? '1 paketten az',
       consecutiveHabit: latestSurvey?.consecutiveSmokingHabit,
@@ -1261,12 +1351,13 @@ class StorageService {
       learnedWeights: learnedWeights,
     );
 
-    final personalizedAdjustment = _behaviorEngine.calculatePersonalizedRiskAdjustment(
-      surveyRecords: surveyRecords,
-      breathRecords: breathRecords,
-      latestContext: latestContext,
-      sensorEvents: sensorEvents,
-    );
+    final personalizedAdjustment = _behaviorEngine
+        .calculatePersonalizedRiskAdjustment(
+          surveyRecords: surveyRecords,
+          breathRecords: breathRecords,
+          latestContext: latestContext,
+          sensorEvents: sensorEvents,
+        );
 
     final taskAdjustment = _taskOutcomeRiskAdjustment(taskHistory);
 
@@ -1278,33 +1369,35 @@ class StorageService {
             .clamp(0, 100);
 
     final weeklyPayload =
-      (latestContext?['weeklyPayload'] as Map<String, dynamic>?) ??
-      const <String, dynamic>{};
+        (latestContext['weeklyPayload'] as Map<String, dynamic>?) ??
+        const <String, dynamic>{};
     final weeklyEvaluation = _behaviorEngine.evaluateWeeklySurveyRisk(
       weeklyPayload,
+      profileContext: latestContext,
     );
     final weeklyRiskScore =
-      (weeklyEvaluation['weeklyRiskScore'] as num?)?.toInt() ?? 40;
+        (weeklyEvaluation['weeklyRiskScore'] as num?)?.toInt() ?? 40;
     final weeklyRiskLevel =
-      weeklyEvaluation['weeklyRiskLevel']?.toString() ?? 'medium';
+        weeklyEvaluation['weeklyRiskLevel']?.toString() ?? 'medium';
+    final respiratoryBurden =
+        (weeklyEvaluation['respiratoryBurden'] as num?)?.toInt() ?? 25;
+    final respiratoryState =
+        weeklyEvaluation['respiratoryState']?.toString() ?? 'stable';
     final weeklyTopRiskDrivers =
-      (weeklyEvaluation['topRiskDrivers'] as List<dynamic>? ?? const [])
-        .map((item) => item.toString())
-        .toList();
+        (weeklyEvaluation['topRiskDrivers'] as List<dynamic>? ?? const [])
+            .map((item) => item.toString())
+            .toList();
 
-    var dynamicRisk =
-      ((preWeeklyRisk * 0.7) + (weeklyRiskScore * 0.3)).round();
-    final lapseCount =
-      (weeklyPayload['lapseCount'] as num?)?.toInt() ?? 0;
-    final cravingMax =
-      (weeklyPayload['cravingMax'] as num?)?.toInt() ?? 0;
-    final selfEfficacy =
-      (weeklyPayload['selfEfficacy'] as num?)?.toInt() ?? 0;
+    var dynamicRisk = ((preWeeklyRisk * 0.7) + (weeklyRiskScore * 0.3)).round();
+    final lapseCount = (weeklyPayload['lapseCount'] as num?)?.toInt() ?? 0;
+    final cravingMax = (weeklyPayload['cravingMax'] as num?)?.toInt() ?? 0;
+    final selfEfficacy = (weeklyPayload['selfEfficacy'] as num?)?.toInt() ?? 0;
     final completionRate =
-      ((weeklyPayload['task'] as Map<String, dynamic>?)?['weeklyCompletionRate']
-          as num?)
-        ?.toInt() ??
-      0;
+        ((weeklyPayload['task']
+                    as Map<String, dynamic>?)?['weeklyCompletionRate']
+                as num?)
+            ?.toInt() ??
+        0;
     if (lapseCount >= 3 && cravingMax >= 8) {
       dynamicRisk = (dynamicRisk + 12).clamp(0, 100).toInt();
     }
@@ -1321,20 +1414,28 @@ class StorageService {
     final taskOutcomeSummary = await loadTaskOutcomeSummary();
     final recentSuccessCount = taskOutcomeSummary['recentSuccessCount'] ?? 0;
     final recentFailureCount = taskOutcomeSummary['recentFailureCount'] ?? 0;
-    final barrierOutcomeSummary = _summarizeDurationBarrierOutcomes(taskHistory);
+    final barrierOutcomeSummary = _summarizeDurationBarrierOutcomes(
+      taskHistory,
+    );
     final recentBarrierSuccessCount =
-      barrierOutcomeSummary['recentSuccessCount'] ?? 0;
+        barrierOutcomeSummary['recentSuccessCount'] ?? 0;
     final recentBarrierFailureCount =
-      barrierOutcomeSummary['recentFailureCount'] ?? 0;
+        barrierOutcomeSummary['recentFailureCount'] ?? 0;
     final totalBarrierOutcomes =
-      (barrierOutcomeSummary['successCount'] ?? 0) +
-      (barrierOutcomeSummary['failureCount'] ?? 0);
+        (barrierOutcomeSummary['successCount'] ?? 0) +
+        (barrierOutcomeSummary['failureCount'] ?? 0);
     final barrierSuccessRate = totalBarrierOutcomes == 0
-      ? 0.5
-      : (barrierOutcomeSummary['successCount'] ?? 0) / totalBarrierOutcomes;
+        ? 0.5
+        : (barrierOutcomeSummary['successCount'] ?? 0) / totalBarrierOutcomes;
     final recentTaskCompletionRate = _recentTaskCompletionRate(taskHistory);
     final dailyBarrierScore =
-      (0.6 * barrierSuccessRate) + (0.4 * recentTaskCompletionRate);
+        (0.6 * barrierSuccessRate) + (0.4 * recentTaskCompletionRate);
+    final barrierPreferenceRaw =
+        (await loadSetting('duration_barrier_preference')) ?? 'neutral';
+    final barrierFrequencyRaw =
+        (await loadSetting('duration_barrier_frequency_preference')) ?? 'orta';
+    final barrierEnabled =
+        ((await loadSetting('duration_barrier_enabled')) ?? '1') == '1';
 
     if (recentBarrierFailureCount >= recentBarrierSuccessCount + 2) {
       dynamicRisk = (dynamicRisk + 6).clamp(0, 100).toInt();
@@ -1406,8 +1507,8 @@ class StorageService {
     final optimizedCommands = _mentorEngine.optimizeActionCommands(
       commands: coachCommands,
       taskHistory: taskHistory,
-      previousScores: existingSnapshot?.commandSuccessScores ??
-          const <String, double>{},
+      previousScores:
+          existingSnapshot?.commandSuccessScores ?? const <String, double>{},
     );
     final optimizedCoachCommands =
         (optimizedCommands['commands'] as List<dynamic>)
@@ -1440,18 +1541,29 @@ class StorageService {
       mode: commandMixMode,
       maxCount: adaptiveCommandCount,
     );
-    final durationBarrierCommands = _mentorEngine.buildDurationBarrierCommands(
-      riskScore: dynamicRisk,
-      predictedWindow: prediction['nextRiskWindow']?.toString(),
-      riskyHours: riskyHours,
-      recentSuccessCount: recentSuccessCount,
-      recentFailureCount: recentFailureCount,
-      barrierSuccessRate: barrierSuccessRate,
-      recentBarrierSuccessCount: recentBarrierSuccessCount,
-      recentBarrierFailureCount: recentBarrierFailureCount,
-      currentDay: adaptivePlan.currentDay,
-      recentTaskCompletionRate: recentTaskCompletionRate,
-    );
+    final durationBarrierCommands = barrierEnabled
+        ? _mentorEngine.buildDurationBarrierCommands(
+            riskScore: dynamicRisk,
+            predictedWindow: prediction['nextRiskWindow']?.toString(),
+            riskyHours: riskyHours,
+            recentSuccessCount: recentSuccessCount,
+            recentFailureCount: recentFailureCount,
+            barrierSuccessRate: barrierSuccessRate,
+            recentBarrierSuccessCount: recentBarrierSuccessCount,
+            recentBarrierFailureCount: recentBarrierFailureCount,
+            recentTaskCompletionRate: recentTaskCompletionRate,
+            packsPerDay: latestSurvey?.packsPerDay ?? '1 paketten az',
+            firstCigaretteRange: latestContext['firstCigaretteRange']
+                ?.toString(),
+            smokeFreeRange: latestContext['smokeFreeRange']?.toString(),
+            stressLevel: latestContext['stressLevel']?.toString(),
+            workplaceSmokingRule: latestContext['workplaceSmokingRule']
+                ?.toString(),
+            barrierPreference: barrierPreferenceRaw,
+            barrierFrequencyPreference: barrierFrequencyRaw,
+            barrierEnabled: barrierEnabled,
+          )
+        : const <String>[];
 
     final riskExplanation = _behaviorEngine.buildRiskExplanation(
       baseRisk: baseRisk,
@@ -1461,7 +1573,12 @@ class StorageService {
       taskAdjustment: taskAdjustment,
       finalRisk: dynamicRisk,
     );
-    riskExplanation.add('Haftalik anket skoru: $weeklyRiskScore ($weeklyRiskLevel)');
+    riskExplanation.add(
+      'Haftalik anket skoru: $weeklyRiskScore ($weeklyRiskLevel)',
+    );
+    riskExplanation.add(
+      'Respiratuar yuk: $respiratoryBurden / durum: $respiratoryState',
+    );
     riskExplanation.add('Komut dengeleme modu: $commandMixMode');
     riskExplanation.add('Gunluk komut adedi: $adaptiveCommandCount');
     riskExplanation.add(
@@ -1469,6 +1586,9 @@ class StorageService {
     );
     riskExplanation.add(
       'Sure bariyeri uyumu: %${(barrierSuccessRate * 100).round()} (son: $recentBarrierSuccessCount basarili / $recentBarrierFailureCount basarisiz)',
+    );
+    riskExplanation.add(
+      'Sure bariyeri tercihi: $barrierPreferenceRaw / siklik: $barrierFrequencyRaw / aktif: ${barrierEnabled ? 'evet' : 'hayir'}',
     );
 
     final dashboard = _behaviorEngine.buildDashboard(
@@ -1550,7 +1670,9 @@ class StorageService {
     required int recentFailureCount,
   }) {
     final targetGap = riskScore - weeklyRiskTarget;
-    if (riskScore >= 70 || targetGap >= 15 || recentFailureCount > recentSuccessCount) {
+    if (riskScore >= 70 ||
+        targetGap >= 15 ||
+        recentFailureCount > recentSuccessCount) {
       return 'aggressive';
     }
 
@@ -1690,6 +1812,158 @@ class StorageService {
     return currentMinutes >= startMinutes || currentMinutes < endMinutes;
   }
 
+  Map<String, dynamic> _buildMergedProfileContext({
+    required List<SurveyRecord> surveyRecords,
+    required Map<String, Map<String, dynamic>> contextMap,
+  }) {
+    final merged = <String, dynamic>{};
+    final sorted = [...surveyRecords]
+      ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
+
+    for (final record in sorted) {
+      final context = contextMap[record.id];
+      if (context == null) {
+        continue;
+      }
+
+      void setIfPresent(String key) {
+        final value = context[key];
+        if (value == null) {
+          return;
+        }
+        if (value is String && value.trim().isEmpty) {
+          return;
+        }
+        if (value is List && value.isEmpty) {
+          return;
+        }
+        merged[key] = value;
+      }
+
+      setIfPresent('profession');
+      setIfPresent('sleepTime');
+      setIfPresent('wakeTime');
+      setIfPresent('workStart');
+      setIfPresent('workEnd');
+      setIfPresent('workplaceSmokingRule');
+      setIfPresent('workingDays');
+      setIfPresent('breakWindows');
+      setIfPresent('weekendSmokingPattern');
+      setIfPresent('firstCigaretteRange');
+      setIfPresent('smokeFreeRange');
+      setIfPresent('stressLevel');
+      setIfPresent('quitReason');
+      setIfPresent('healthConditions');
+
+      final weeklyPayload = context['weeklyPayload'] as Map<String, dynamic>?;
+      if (weeklyPayload != null && weeklyPayload.isNotEmpty) {
+        merged['weeklyPayload'] = weeklyPayload;
+        final profileUpdate =
+            weeklyPayload['profileUpdate'] as Map<String, dynamic>?;
+        final changed = profileUpdate?['changed'] == true;
+        if (changed) {
+          final workStart = profileUpdate?['workStart']?.toString();
+          final workEnd = profileUpdate?['workEnd']?.toString();
+          final workplaceRule = profileUpdate?['workplaceSmokingRule']
+              ?.toString();
+          final weekendPattern = profileUpdate?['weekendSmokingPattern']
+              ?.toString();
+          final workingDays =
+              (profileUpdate?['workingDays'] as List<dynamic>? ??
+                      const <dynamic>[])
+                  .map((item) => item.toString())
+                  .where((item) => item.trim().isNotEmpty)
+                  .toList();
+          final breakWindows =
+              (profileUpdate?['breakWindows'] as List<dynamic>? ??
+                      const <dynamic>[])
+                  .whereType<Map<String, dynamic>>()
+                  .map(
+                    (item) => {
+                      'start': item['start']?.toString() ?? '',
+                      'end': item['end']?.toString() ?? '',
+                    },
+                  )
+                  .where(
+                    (item) =>
+                        item['start']!.trim().isNotEmpty &&
+                        item['end']!.trim().isNotEmpty,
+                  )
+                  .toList();
+
+          if (workStart != null && workStart.trim().isNotEmpty) {
+            merged['workStart'] = workStart;
+          }
+          if (workEnd != null && workEnd.trim().isNotEmpty) {
+            merged['workEnd'] = workEnd;
+          }
+          if (workplaceRule != null && workplaceRule.trim().isNotEmpty) {
+            merged['workplaceSmokingRule'] = workplaceRule;
+          }
+          if (workingDays.isNotEmpty) {
+            merged['workingDays'] = workingDays;
+          }
+          if (breakWindows.isNotEmpty) {
+            merged['breakWindows'] = breakWindows;
+          }
+          if (weekendPattern != null && weekendPattern.trim().isNotEmpty) {
+            merged['weekendSmokingPattern'] = weekendPattern;
+          }
+        }
+      }
+    }
+
+    return merged;
+  }
+
+  String _weekdayKey(int weekday) {
+    switch (weekday) {
+      case DateTime.monday:
+        return 'Mon';
+      case DateTime.tuesday:
+        return 'Tue';
+      case DateTime.wednesday:
+        return 'Wed';
+      case DateTime.thursday:
+        return 'Thu';
+      case DateTime.friday:
+        return 'Fri';
+      case DateTime.saturday:
+        return 'Sat';
+      case DateTime.sunday:
+        return 'Sun';
+      default:
+        return 'Mon';
+    }
+  }
+
+  int _minutesUntilNextBreak({
+    required DateTime now,
+    required List<Map<String, String>> breakWindows,
+  }) {
+    if (breakWindows.isEmpty) {
+      return -1;
+    }
+
+    final currentMinutes = now.hour * 60 + now.minute;
+    var best = 24 * 60;
+    for (final window in breakWindows) {
+      final startMinutes = _parseMinutes(window['start'] ?? '');
+      if (startMinutes == null) {
+        continue;
+      }
+      var delta = startMinutes - currentMinutes;
+      if (delta < 0) {
+        delta += 24 * 60;
+      }
+      if (delta < best) {
+        best = delta;
+      }
+    }
+
+    return best == 24 * 60 ? -1 : best;
+  }
+
   int _minutesUntilWindowEnds({
     required DateTime now,
     required String? endTime,
@@ -1705,6 +1979,40 @@ class StorageService {
       delta += 24 * 60;
     }
     return delta;
+  }
+
+  Map<String, String?> _inferWorkWindow({
+    required String? wakeTime,
+    required String? workStart,
+    required String? workEnd,
+  }) {
+    if (workStart != null &&
+        workStart.trim().isNotEmpty &&
+        workEnd != null &&
+        workEnd.trim().isNotEmpty) {
+      return {'workStart': workStart, 'workEnd': workEnd};
+    }
+
+    final wake = wakeTime ?? '07:00';
+    final wakeMinutes = _parseMinutes(wake) ?? (7 * 60);
+    final inferredStart = _formatMinutes((wakeMinutes + 120) % (24 * 60));
+    final inferredEnd = _formatMinutes((wakeMinutes + 600) % (24 * 60));
+
+    return {
+      'workStart': (workStart == null || workStart.trim().isEmpty)
+          ? inferredStart
+          : workStart,
+      'workEnd': (workEnd == null || workEnd.trim().isEmpty)
+          ? inferredEnd
+          : workEnd,
+    };
+  }
+
+  String _formatMinutes(int totalMinutes) {
+    final safe = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+    final hour = (safe ~/ 60).toString().padLeft(2, '0');
+    final minute = (safe % 60).toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 
   int? _parseMinutes(String? time) {

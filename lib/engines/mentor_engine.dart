@@ -139,17 +139,57 @@ class MentorEngine {
 		required double barrierSuccessRate,
 		required int recentBarrierSuccessCount,
 		required int recentBarrierFailureCount,
-		required int currentDay,
 		required double recentTaskCompletionRate,
+		required String packsPerDay,
+		required String? firstCigaretteRange,
+		required String? smokeFreeRange,
+		required String? stressLevel,
+		required String? workplaceSmokingRule,
+		required String barrierPreference,
+		required String barrierFrequencyPreference,
+		required bool barrierEnabled,
 	}) {
+		if (!barrierEnabled) {
+			return const [];
+		}
+
 		final dayPart = _resolveDayPart(
 			predictedWindow: predictedWindow,
 			riskyHours: riskyHours,
 		);
-		final phase = _resolveBarrierPhase(currentDay);
-		var minMinutes = phase.$1;
-		var maxMinutes = phase.$2;
-		var count = phase.$3;
+
+		final nicotineLoad = _nicotineLoadScore(packsPerDay);
+		final firstSmokeUrgency = _firstSmokeUrgencyScore(firstCigaretteRange);
+		final smokeFreeCapacity = _smokeFreeCapacityScore(smokeFreeRange);
+		final stressScore = _stressScore(stressLevel);
+		final workplaceScore = _workplaceRuleScore(workplaceSmokingRule);
+
+		var minMinutes = (
+			(8 + (smokeFreeCapacity * 0.38)) +
+			((100 - riskScore) * 0.14) +
+			(barrierSuccessRate * 14) +
+			(recentTaskCompletionRate * 9) -
+			(nicotineLoad * 2.0) -
+			(firstSmokeUrgency * 1.9) -
+			(stressScore * 2.4) +
+			(workplaceScore * 0.8)
+		).round();
+
+		var dynamicSpan = (
+			24 +
+			(riskScore * 0.52) +
+			(smokeFreeCapacity * 0.21) +
+			(nicotineLoad * 1.5) +
+			(stressScore * 2.0)
+		).round();
+
+		var count = (
+			1.35 +
+			(riskScore / 40) +
+			((1.0 - barrierSuccessRate.clamp(0.0, 1.0)) * 1.6) +
+			((1.0 - recentTaskCompletionRate.clamp(0.0, 1.0)) * 1.1) +
+			(nicotineLoad / 6)
+		).round();
 
 		final barrierScore = _dailyBarrierScore(
 			barrierSuccessRate: barrierSuccessRate,
@@ -157,23 +197,23 @@ class MentorEngine {
 		);
 
 		if (barrierScore >= 0.80) {
-			minMinutes += 12;
-			maxMinutes += 24;
+			minMinutes += 10;
+			dynamicSpan += 18;
 			count = (count - 1).clamp(1, 6);
 		} else if (barrierScore < 0.50) {
 			minMinutes -= 8;
-			maxMinutes -= 10;
+			dynamicSpan -= 8;
 			count = (count + 1).clamp(2, 6);
 		}
 
 		if (recentBarrierFailureCount >= 3) {
 			minMinutes -= 10;
-			maxMinutes -= 6;
+			dynamicSpan -= 6;
 			count = (count + 1).clamp(2, 6);
 		}
 		if (recentBarrierSuccessCount >= 5) {
 			minMinutes += 15;
-			maxMinutes += 20;
+			dynamicSpan += 20;
 			count = (count - 1).clamp(1, 5);
 		}
 
@@ -181,16 +221,39 @@ class MentorEngine {
 			count = (count + 1).clamp(2, 6);
 		}
 
-		final riskMinMax = _barrierMinuteRange(riskScore, dayPart);
-		if (riskMinMax.$1 > minMinutes) {
-			minMinutes = riskMinMax.$1;
+		if (barrierPreference == 'like') {
+			minMinutes += 6;
+			dynamicSpan += 10;
+		} else if (barrierPreference == 'dislike') {
+			count = (count - 1).clamp(1, 5);
+			dynamicSpan -= 4;
+		} else if (barrierPreference == 'off') {
+			return const [];
 		}
-		if (riskMinMax.$2 > maxMinutes) {
-			maxMinutes = riskMinMax.$2;
+
+		if (barrierFrequencyPreference == 'az') {
+			count = (count - 1).clamp(1, 5);
+		} else if (barrierFrequencyPreference == 'cok') {
+			count = (count + 1).clamp(2, 6);
+		}
+
+		final riskMinMax = _barrierMinuteRange(riskScore, dayPart);
+		if (riskMinMax.$1 > minMinutes && barrierScore < 0.50) {
+			minMinutes = riskMinMax.$1;
 		}
 
 		if (minMinutes < 8) {
 			minMinutes = 8;
+		}
+		if (dynamicSpan < 15) {
+			dynamicSpan = 15;
+		}
+		var maxMinutes = minMinutes + dynamicSpan;
+		if (maxMinutes < riskMinMax.$1 + 10) {
+			maxMinutes = riskMinMax.$1 + 10;
+		}
+		if (maxMinutes > 260) {
+			maxMinutes = 260;
 		}
 		if (maxMinutes < minMinutes + 15) {
 			maxMinutes = minMinutes + 15;
@@ -216,19 +279,6 @@ class MentorEngine {
 		return commands.take(5).toList();
 	}
 
-	(int, int, int) _resolveBarrierPhase(int currentDay) {
-		if (currentDay <= 14) {
-			return (10, 30, 5);
-		}
-		if (currentDay <= 42) {
-			return (20, 45, 4);
-		}
-		if (currentDay <= 90) {
-			return (35, 75, 3);
-		}
-		return (60, 150, 3);
-	}
-
 	double _dailyBarrierScore({
 		required double barrierSuccessRate,
 		required double recentTaskCompletionRate,
@@ -236,6 +286,88 @@ class MentorEngine {
 		final normalizedBarrier = barrierSuccessRate.clamp(0.0, 1.0);
 		final normalizedTask = recentTaskCompletionRate.clamp(0.0, 1.0);
 		return (0.6 * normalizedBarrier) + (0.4 * normalizedTask);
+	}
+
+	int _nicotineLoadScore(String packsPerDay) {
+		final value = packsPerDay.toLowerCase();
+		if (value.contains('4') || value.contains('5') || value.contains('3+')) {
+			return 9;
+		}
+		if (value.contains('3')) {
+			return 8;
+		}
+		if (value.contains('2')) {
+			return 6;
+		}
+		if (value.contains('1')) {
+			return 4;
+		}
+		return 3;
+	}
+
+	int _firstSmokeUrgencyScore(String? firstCigaretteRange) {
+		switch ((firstCigaretteRange ?? '').trim()) {
+			case '0-5':
+				return 8;
+			case '5-10':
+				return 7;
+			case '10-30':
+				return 5;
+			case '30-60':
+				return 3;
+			case '60+':
+				return 2;
+			default:
+				return 4;
+		}
+	}
+
+	int _smokeFreeCapacityScore(String? smokeFreeRange) {
+		switch ((smokeFreeRange ?? '').trim()) {
+			case '0-15':
+				return 15;
+			case '15-30':
+				return 28;
+			case '30-60':
+				return 45;
+			case '60-120':
+				return 80;
+			case '120-240':
+				return 140;
+			case '240+':
+				return 200;
+			default:
+				return 50;
+		}
+	}
+
+	int _stressScore(String? stressLevel) {
+		switch ((stressLevel ?? '').toLowerCase()) {
+			case 'yüksek':
+			case 'yuksek':
+				return 8;
+			case 'orta':
+				return 5;
+			case 'düşük':
+			case 'dusuk':
+				return 2;
+			default:
+				return 4;
+		}
+	}
+
+	int _workplaceRuleScore(String? workplaceSmokingRule) {
+		switch ((workplaceSmokingRule ?? '').toLowerCase()) {
+			case 'hayır':
+			case 'hayir':
+				return 3;
+			case 'sadece molalarda':
+				return 1;
+			case 'evet':
+				return -1;
+			default:
+				return 0;
+		}
 	}
 
 	(int, int) _barrierMinuteRange(int riskScore, String dayPart) {

@@ -44,6 +44,8 @@ class NotificationService {
   static const String _breathReminderChannelId = 'breath_reminder_channel_v3';
   static const String _weeklySurveyChannelId = 'weekly_survey_channel_v1';
   static const int _weeklySurveyNotificationId = 700001;
+  static const int _dailyBreathReminderBaseId = 420100;
+  static const int _dailyBreathReminderMaxSlots = 6;
   static const int _notificationTimeoutMs = 15000;
   static const Duration _unansweredReminderDelay = Duration(minutes: 10);
   static final Int32List _insistentFlag = Int32List.fromList(<int>[4]);
@@ -111,32 +113,6 @@ class NotificationService {
       onDidReceiveNotificationResponse: _handleNotificationResponse,
       onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
-
-    // Request runtime notification permission (Android 13+ and iOS).
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.requestNotificationsPermission();
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.requestExactAlarmsPermission();
-    try {
-      final dynamic androidPlugin = _plugin
-          .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin
-          >();
-      await androidPlugin?.requestFullScreenIntentPermission();
-    } catch (_) {
-      // Full-screen intent permission may not be supported on all devices/APIs.
-    }
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-        >()
-        ?.requestPermissions(alert: true, badge: true, sound: true);
 
     await _syncWatchdogViolationsFromNative();
   }
@@ -236,6 +212,18 @@ class NotificationService {
     return enabled && fullScreenGranted;
   }
 
+  static Future<void> openExactAlarmSettingsOptional() async {
+    try {
+      final dynamic androidPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      await androidPlugin?.requestExactAlarmsPermission();
+    } catch (_) {
+      // Optional action: ignore on unsupported devices/APIs.
+    }
+  }
+
   static Future<AndroidScheduleMode> _resolveAndroidScheduleMode() async {
     final androidPlugin = _plugin
         .resolvePlatformSpecificImplementation<
@@ -249,11 +237,6 @@ class NotificationService {
       final canScheduleExact =
           await androidPlugin.canScheduleExactNotifications() ?? false;
       if (canScheduleExact) {
-        return AndroidScheduleMode.exactAllowWhileIdle;
-      }
-
-      final granted = await androidPlugin.requestExactAlarmsPermission();
-      if (granted == true) {
         return AndroidScheduleMode.exactAllowWhileIdle;
       }
     } catch (_) {
@@ -648,72 +631,156 @@ class NotificationService {
   static Future<void> scheduleDailyBreathReminder({
     required String sleepTime,
   }) async {
+    await scheduleAdaptiveDailyBreathReminders(
+      sleepTime: sleepTime,
+      wakeTime: '07:00',
+      minimumCount: 1,
+      preferredCount: 1,
+    );
+  }
+
+  static Future<void> scheduleAdaptiveDailyBreathReminders({
+    required String sleepTime,
+    required String wakeTime,
+    int minimumCount = 1,
+    int preferredCount = 1,
+  }) async {
     final scheduleMode = await _resolveAndroidScheduleMode();
     final code = await LanguageService.loadSelectedLanguageCode();
-    final parts = sleepTime.split(':');
-    final hour = int.tryParse(parts[0]) ?? 21;
-    final minute = int.tryParse(parts[1]) ?? 0;
     final now = tz.TZDateTime.now(tz.local);
-    var scheduledDate = tz.TZDateTime(
+    var safeMinimum = minimumCount < 1 ? 1 : minimumCount;
+    if (safeMinimum > _dailyBreathReminderMaxSlots) {
+      safeMinimum = _dailyBreathReminderMaxSlots;
+    }
+    var safePreferred = preferredCount < safeMinimum
+        ? safeMinimum
+        : preferredCount;
+    if (safePreferred > _dailyBreathReminderMaxSlots) {
+      safePreferred = _dailyBreathReminderMaxSlots;
+    }
+
+    final wakeParts = wakeTime.split(':');
+    final wakeHour = int.tryParse(wakeParts[0]) ?? 7;
+    final wakeMinute = int.tryParse(wakeParts[1]) ?? 0;
+
+    final sleepParts = sleepTime.split(':');
+    final sleepHour = int.tryParse(sleepParts[0]) ?? 21;
+    final sleepMinute = int.tryParse(sleepParts[1]) ?? 0;
+
+    var wakeAt = tz.TZDateTime(
       tz.local,
       now.year,
       now.month,
       now.day,
-      hour,
-      minute,
+      wakeHour,
+      wakeMinute,
     );
-    scheduledDate = scheduledDate.subtract(const Duration(minutes: 45));
-    var finalDate = scheduledDate.isBefore(now)
-        ? scheduledDate.add(const Duration(days: 1))
-        : scheduledDate;
-
-    final interruptionContext = await _resolveInterruptionContext();
-    final extraDelay =
-        (interruptionContext['recommendedDeferralMinutes'] as int?) ?? 0;
-    final contextLabel =
-        interruptionContext['contextLabel']?.toString() ?? 'normal';
-    final confidence =
-      (interruptionContext['confidence'] as num?)?.toDouble() ?? 0.0;
-    await _persistNotificationContext(
-      code: code,
-      contextLabel: contextLabel,
-      confidence: confidence,
+    var sleepAt = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      sleepHour,
+      sleepMinute,
     );
-    if (extraDelay > 0) {
-      finalDate = finalDate.add(Duration(minutes: extraDelay));
+    if (!sleepAt.isAfter(wakeAt)) {
+      sleepAt = sleepAt.add(const Duration(days: 1));
     }
 
-    final body = contextLabel == 'driving'
-        ? _text(code, 'breathReminderDriving')
-        : contextLabel == 'workout'
-        ? _text(code, 'breathReminderWorkout')
-        : contextLabel == 'eating'
-        ? _text(code, 'breathReminderPostMeal')
-        : _text(code, 'breathReminderBody');
+    final windowMinutes = sleepAt.difference(wakeAt).inMinutes;
+    final count = safePreferred;
+    final intervalMinutes = count <= 1
+        ? (windowMinutes ~/ 2)
+        : (windowMinutes ~/ (count + 1));
 
-    await _plugin.zonedSchedule(
-      0,
-      _text(code, 'breathReminderTitle'),
+    for (var i = 0; i < _dailyBreathReminderMaxSlots; i++) {
+      await _plugin.cancel(_dailyBreathReminderBaseId + i);
+    }
+
+    for (var i = 0; i < count; i++) {
+      var fireAt = wakeAt.add(Duration(minutes: intervalMinutes * (i + 1)));
+      if (!fireAt.isAfter(now)) {
+        fireAt = fireAt.add(const Duration(days: 1));
+      }
+
+      final interruptionContext = await _resolveInterruptionContext();
+      final extraDelay =
+          (interruptionContext['recommendedDeferralMinutes'] as int?) ?? 0;
+      final contextLabel =
+          interruptionContext['contextLabel']?.toString() ?? 'normal';
+      final confidence =
+          (interruptionContext['confidence'] as num?)?.toDouble() ?? 0.0;
+      await _persistNotificationContext(
+        code: code,
+        contextLabel: contextLabel,
+        confidence: confidence,
+      );
+      fireAt = fireAt.add(Duration(minutes: extraDelay));
+
+      final body = contextLabel == 'driving'
+          ? _text(code, 'breathReminderDriving')
+          : contextLabel == 'workout'
+          ? _text(code, 'breathReminderWorkout')
+          : contextLabel == 'eating'
+          ? _text(code, 'breathReminderPostMeal')
+          : _text(code, 'breathReminderBody');
+
+      await _plugin.zonedSchedule(
+        _dailyBreathReminderBaseId + i,
+        _text(code, 'breathReminderTitle'),
         body,
-      finalDate,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _breathReminderChannelId,
-          'Nefes testi hatırlatıcı',
-          importance: Importance.max,
-          priority: Priority.high,
-          playSound: true,
-          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
-          category: AndroidNotificationCategory.reminder,
+        fireAt,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _breathReminderChannelId,
+            'Nefes testi hatırlatıcı',
+            importance: Importance.max,
+            priority: Priority.high,
+            playSound: true,
+            audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+            category: AndroidNotificationCategory.reminder,
+          ),
+          iOS: DarwinNotificationDetails(presentSound: true),
         ),
-        iOS: DarwinNotificationDetails(presentSound: true),
-      ),
-      androidScheduleMode: scheduleMode,
-      matchDateTimeComponents: DateTimeComponents.time,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      payload: jsonEncode({'type': _typeBreath}),
-    );
+        androidScheduleMode: scheduleMode,
+        matchDateTimeComponents: DateTimeComponents.time,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: jsonEncode({'type': _typeBreath}),
+      );
+    }
+
+    if (safeMinimum <= count) {
+      return;
+    }
+
+    // Safety net: if preferred count somehow falls below minimum.
+    for (var i = count; i < safeMinimum; i++) {
+      final fallbackAt = now.add(Duration(minutes: 60 + (i * 45)));
+      await _plugin.zonedSchedule(
+        _dailyBreathReminderBaseId + i,
+        _text(code, 'breathReminderTitle'),
+        _text(code, 'breathReminderBody'),
+        fallbackAt,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _breathReminderChannelId,
+            'Nefes testi hatırlatıcı',
+            importance: Importance.max,
+            priority: Priority.high,
+            playSound: true,
+            audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+            category: AndroidNotificationCategory.reminder,
+          ),
+          iOS: DarwinNotificationDetails(presentSound: true),
+        ),
+        androidScheduleMode: scheduleMode,
+        matchDateTimeComponents: DateTimeComponents.time,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: jsonEncode({'type': _typeBreath}),
+      );
+    }
   }
 
   static Future<void> scheduleTaskFollowUpReminder({
@@ -881,6 +948,8 @@ class NotificationService {
   static Future<void> scheduleCoachCommandNotifications({
     required List<String> commands,
     String? predictedRiskWindow,
+    int? maxNotifications,
+    int spacingMinutes = 20,
   }) async {
     if (commands.isEmpty) {
       return;
@@ -920,10 +989,12 @@ class NotificationService {
       confidence: confidence,
     );
 
-    final maxCount = commands.length < 3 ? commands.length : 3;
+    final safeSpacing = spacingMinutes < 10 ? 10 : spacingMinutes;
+    final configuredMax = (maxNotifications ?? 3).clamp(1, 6);
+    final maxCount = commands.length < configuredMax ? commands.length : configuredMax;
     for (var i = 0; i < maxCount; i++) {
       final fireAt = normalizedFirstAt
-          .add(Duration(minutes: i * 20))
+          .add(Duration(minutes: i * safeSpacing))
           .add(Duration(minutes: extraDelay));
       final id =
           (DateTime.now().millisecondsSinceEpoch + 700000 + i).remainder(

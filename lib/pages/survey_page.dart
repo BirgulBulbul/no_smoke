@@ -5,6 +5,7 @@ import '../models/survey_record.dart';
 import '../models/user_profile_snapshot.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
+import '../services/permission_service.dart';
 import '../widgets/consecutive_smoking_section.dart';
 import '../widgets/no_smoke_logo.dart';
 import '../widgets/packs_per_day_section.dart';
@@ -35,10 +36,20 @@ class _SurveyPageState extends State<SurveyPage> {
   String? wakeTime;
   String? workStartTime;
   String? workEndTime;
+  final Set<String> workingDays = <String>{'Mon', 'Tue', 'Wed', 'Thu', 'Fri'};
+  bool hasSmokingBreaks = false;
+  String? breakStart1;
+  String? breakEnd1;
+  bool hasSecondBreak = false;
+  String? breakStart2;
+  String? breakEnd2;
+  String weekendSmokingPattern = 'Ayni';
   String packOption = '1 paketten az';
   String? highPackOption;
   String? consecutiveSmokingHabit;
   String? consecutiveSmokingCount;
+  String durationBarrierPreference = 'Farketmez';
+  String durationBarrierFrequencyPreference = 'Orta';
 
   bool hypertension = false;
   bool asthma = false;
@@ -110,6 +121,16 @@ class _SurveyPageState extends State<SurveyPage> {
     '4-7 yıl',
     '8-10 yıl',
     '10+ yıl',
+  ];
+
+  static const List<Map<String, String>> workDayOptions = [
+    {'key': 'Mon', 'label': 'Pzt'},
+    {'key': 'Tue', 'label': 'Sal'},
+    {'key': 'Wed', 'label': 'Car'},
+    {'key': 'Thu', 'label': 'Per'},
+    {'key': 'Fri', 'label': 'Cum'},
+    {'key': 'Sat', 'label': 'Cmt'},
+    {'key': 'Sun', 'label': 'Paz'},
   ];
 
   String get _resolvedPacksPerDay {
@@ -184,11 +205,39 @@ class _SurveyPageState extends State<SurveyPage> {
     return health;
   }
 
-  Future<void> _saveInitialSurveyRecord() async {
+  List<Map<String, String>> _selectedBreakWindows() {
+    final result = <Map<String, String>>[];
+    if (hasSmokingBreaks &&
+        breakStart1 != null &&
+        breakEnd1 != null &&
+        breakStart1!.isNotEmpty &&
+        breakEnd1!.isNotEmpty) {
+      result.add({'start': breakStart1!, 'end': breakEnd1!});
+    }
+    if (hasSmokingBreaks &&
+        hasSecondBreak &&
+        breakStart2 != null &&
+        breakEnd2 != null &&
+        breakStart2!.isNotEmpty &&
+        breakEnd2!.isNotEmpty) {
+      result.add({'start': breakStart2!, 'end': breakEnd2!});
+    }
+    return result;
+  }
+
+  Future<String> _saveInitialSurveyRecord() async {
     final initialTitle = context.t('initialRecordTitle');
     final recordId = DateTime.now().millisecondsSinceEpoch.toString();
     final selectedTriggers = _selectedTriggerLabels();
     final selectedHealth = _selectedHealthConditions();
+    final inferredWorkStart = _resolvedWorkStartForStorage();
+    final inferredWorkEnd = _resolvedWorkEndForStorage();
+    final inferredWorkingDays = _resolvedWorkingDaysForStorage();
+    final inferredWeekendPattern = _resolvedWeekendPatternForStorage();
+    final inferredBreakWindows = _resolvedBreakWindowsForStorage(
+      workStart: inferredWorkStart,
+      workEnd: inferredWorkEnd,
+    );
 
     debugPrint(
       '[SurveyPage] save start: recordId=$recordId, name=${nameController.text.trim()}, '
@@ -233,9 +282,12 @@ class _SurveyPageState extends State<SurveyPage> {
         wakeTime: wakeTime,
         stressLevel: stressLevel,
         quitReason: quitReason,
-        workStart: workStartTime,
-        workEnd: workEndTime,
+        workStart: inferredWorkStart,
+        workEnd: inferredWorkEnd,
         workplaceSmokingRule: workplaceSmokingRule,
+        workingDays: inferredWorkingDays,
+        breakWindows: inferredBreakWindows,
+        weekendSmokingPattern: inferredWeekendPattern,
       );
       debugPrint('[SurveyPage] saveSurveyDetail ok: $recordId');
     } catch (error, stackTrace) {
@@ -246,25 +298,54 @@ class _SurveyPageState extends State<SurveyPage> {
 
     try {
       await _storageService.saveSleepTime(sleepTime!);
+      await _storageService.saveSetting('wake_time', wakeTime!);
+      await _storageService.saveSetting('daily_breath_test_target', '1');
       debugPrint('[SurveyPage] saveSleepTime ok: $sleepTime');
     } catch (error, stackTrace) {
       debugPrint('[SurveyPage] saveSleepTime failed (non-blocking): $error');
       debugPrintStack(stackTrace: stackTrace);
     }
 
+    final normalizedPreference = durationBarrierPreference == 'Begeniyorum'
+        ? 'like'
+        : durationBarrierPreference == 'Begenmiyorum'
+        ? 'dislike'
+        : durationBarrierPreference == 'Istemiyorum'
+        ? 'off'
+        : 'neutral';
+    final normalizedFrequency = durationBarrierFrequencyPreference == 'Az'
+        ? 'az'
+        : durationBarrierFrequencyPreference == 'Cok'
+        ? 'cok'
+        : 'orta';
+    final enabled = normalizedPreference == 'off' ? '0' : '1';
+
     try {
-      await NotificationService.scheduleDailyBreathReminder(
-        sleepTime: sleepTime!,
+      await _storageService.saveSetting(
+        'duration_barrier_preference',
+        normalizedPreference,
       );
-      debugPrint('[SurveyPage] scheduleDailyBreathReminder ok');
+      await _storageService.saveSetting(
+        'duration_barrier_frequency_preference',
+        normalizedFrequency,
+      );
+      await _storageService.saveSetting('duration_barrier_enabled', enabled);
+      debugPrint('[SurveyPage] save duration barrier preferences ok');
     } catch (error, stackTrace) {
       debugPrint(
-        '[SurveyPage] scheduleDailyBreathReminder failed (non-blocking): $error',
+        '[SurveyPage] save duration barrier preferences failed (non-blocking): $error',
       );
       debugPrintStack(stackTrace: stackTrace);
     }
 
-    // Profile snapshot is best-effort during onboarding save.
+    return recordId;
+  }
+
+  Future<void> _saveInitialProfileSnapshot(String recordId) async {
+    final selectedTriggers = _selectedTriggerLabels();
+    final selectedHealth = _selectedHealthConditions();
+
+    // Create profile after user passes through the bulk permission step.
     try {
       await _storageService.saveUserProfileSnapshot(
         UserProfileSnapshot(
@@ -294,6 +375,91 @@ class _SurveyPageState extends State<SurveyPage> {
     }
   }
 
+  Future<void> _runBulkPermissionFlow(String recordId) async {
+    // Ask required permissions right after initial survey is created.
+    var result = await PermissionService.requestOnboardingPermissions();
+    if (!mounted) {
+      return;
+    }
+
+    while (!result.notificationsGranted && mounted) {
+      final action = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(context.t('permissionsRetryTitle')),
+          content: Text(context.t('permissionsRetryMessage')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('continue'),
+              child: Text(context.t('continueWithoutPermission')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('exact'),
+              child: Text(context.t('openAlarmReminderSettings')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('settings'),
+              child: Text(context.t('openSettings')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop('retry'),
+              child: Text(context.t('retry')),
+            ),
+          ],
+        ),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (action == 'continue') {
+        break;
+      }
+
+      if (action == 'settings') {
+        await PermissionService.openPermissionSettings();
+      }
+
+      if (action == 'exact') {
+        await PermissionService.openExactAlarmSettingsOptional();
+      }
+
+      result = await PermissionService.requestOnboardingPermissions();
+      if (!mounted) {
+        return;
+      }
+    }
+
+    if (!result.telemetryGranted) {
+      _showValidationMessage(context.t('sensorPermissionRecommended'));
+    }
+
+    if (!result.notificationsGranted) {
+      _showValidationMessage(context.t('notificationPermissionRequired'));
+    }
+
+    await _saveInitialProfileSnapshot(recordId);
+
+    if (result.notificationsGranted) {
+      try {
+        await NotificationService.scheduleAdaptiveDailyBreathReminders(
+          sleepTime: sleepTime!,
+          wakeTime: wakeTime!,
+          minimumCount: 1,
+          preferredCount: 1,
+        );
+        debugPrint('[SurveyPage] scheduleDailyBreathReminder ok');
+      } catch (error, stackTrace) {
+        debugPrint(
+          '[SurveyPage] scheduleDailyBreathReminder failed (non-blocking): $error',
+        );
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
+  }
+
   String? _missingRequiredFieldMessage() {
     if (nameController.text.trim().isEmpty) {
       return context.t('validationNameRequired');
@@ -304,12 +470,7 @@ class _SurveyPageState extends State<SurveyPage> {
     if (gender == null || gender!.isEmpty) {
       return context.t('validationGenderRequired');
     }
-    if (profession == null || profession!.isEmpty) {
-      return context.t('validationProfessionRequired');
-    }
-    if (smokingYears == null || smokingYears!.isEmpty) {
-      return context.t('validationSmokingYearsRequired');
-    }
+    // Profession/smoking-years are optional to keep onboarding lightweight.
     if (consecutiveSmokingHabit == null || consecutiveSmokingHabit!.isEmpty) {
       return context.t('validationChainHabitRequired');
     }
@@ -323,13 +484,84 @@ class _SurveyPageState extends State<SurveyPage> {
     if (wakeTime == null || wakeTime!.isEmpty) {
       return context.t('validationWakeTimeRequired');
     }
-    if (workStartTime == null || workStartTime!.isEmpty) {
-      return context.t('validationWorkStartRequired');
-    }
-    if (workEndTime == null || workEndTime!.isEmpty) {
-      return context.t('validationWorkEndRequired');
-    }
+    // Work schedule and break windows are inferred in background when omitted.
     return null;
+  }
+
+  String _resolvedWorkStartForStorage() {
+    if (workStartTime != null && workStartTime!.trim().isNotEmpty) {
+      return workStartTime!;
+    }
+    final wake = wakeTime ?? '07:00';
+    final wakeMinutes = _parseMinutes(wake) ?? (7 * 60);
+    return _formatMinutes((wakeMinutes + 120) % (24 * 60));
+  }
+
+  String _resolvedWorkEndForStorage() {
+    if (workEndTime != null && workEndTime!.trim().isNotEmpty) {
+      return workEndTime!;
+    }
+    final start = _parseMinutes(_resolvedWorkStartForStorage()) ?? (9 * 60);
+    return _formatMinutes((start + (8 * 60)) % (24 * 60));
+  }
+
+  List<String> _resolvedWorkingDaysForStorage() {
+    if (workingDays.isNotEmpty) {
+      return workingDays.toList();
+    }
+    return const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  }
+
+  String _resolvedWeekendPatternForStorage() {
+    final value = weekendSmokingPattern.trim();
+    return value.isEmpty ? 'Ayni' : value;
+  }
+
+  List<Map<String, String>> _resolvedBreakWindowsForStorage({
+    required String workStart,
+    required String workEnd,
+  }) {
+    final selected = _selectedBreakWindows();
+    if (selected.isNotEmpty || workplaceSmokingRule != 'Sadece molalarda') {
+      return selected;
+    }
+
+    // If user skips break details, infer a single mid-shift smoking break.
+    final start = _parseMinutes(workStart);
+    final end = _parseMinutes(workEnd);
+    if (start == null || end == null) {
+      return const [
+        {'start': '12:30', 'end': '13:00'},
+      ];
+    }
+
+    final duration = end >= start ? (end - start) : ((24 * 60) - start + end);
+    final mid = (start + (duration ~/ 2)) % (24 * 60);
+    final breakStart = (mid - 15) < 0 ? (24 * 60) + (mid - 15) : (mid - 15);
+    final breakEnd = (breakStart + 30) % (24 * 60);
+    return [
+      {'start': _formatMinutes(breakStart), 'end': _formatMinutes(breakEnd)},
+    ];
+  }
+
+  int? _parseMinutes(String raw) {
+    final parts = raw.split(':');
+    if (parts.length != 2) {
+      return null;
+    }
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) {
+      return null;
+    }
+    return (hour.clamp(0, 23) * 60) + minute.clamp(0, 59);
+  }
+
+  String _formatMinutes(int totalMinutes) {
+    final safe = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+    final hour = (safe ~/ 60).toString().padLeft(2, '0');
+    final minute = (safe % 60).toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 
   void _showValidationMessage(String message) {
@@ -721,9 +953,194 @@ class _SurveyPageState extends State<SurveyPage> {
                 onChanged: (value) {
                   setState(() {
                     workplaceSmokingRule = value!;
+                    if (workplaceSmokingRule == 'Hayır') {
+                      hasSmokingBreaks = false;
+                    }
                   });
                 },
               ),
+              const SizedBox(height: 10),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Calistigin gunler',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: workDayOptions.map((day) {
+                  final key = day['key']!;
+                  final selected = workingDays.contains(key);
+                  return FilterChip(
+                    label: Text(day['label']!),
+                    selected: selected,
+                    onSelected: (value) {
+                      setState(() {
+                        if (value) {
+                          workingDays.add(key);
+                        } else {
+                          workingDays.remove(key);
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: weekendSmokingPattern,
+                decoration: const InputDecoration(
+                  labelText: 'Hafta sonu icim paterni',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'Ayni',
+                    child: Text('Hafta ici ile ayni'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'HaftaSonuDahaFazla',
+                    child: Text('Hafta sonu daha fazla'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'HaftaSonuDahaAz',
+                    child: Text('Hafta sonu daha az'),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    weekendSmokingPattern = value ?? 'Ayni';
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              if (workplaceSmokingRule != 'Hayır')
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Is yerinde sigara molasi var mi?'),
+                  value: hasSmokingBreaks,
+                  onChanged: (value) {
+                    setState(() {
+                      hasSmokingBreaks = value;
+                      if (!value) {
+                        hasSecondBreak = false;
+                        breakStart1 = null;
+                        breakEnd1 = null;
+                        breakStart2 = null;
+                        breakEnd2 = null;
+                      }
+                    });
+                  },
+                ),
+              if (workplaceSmokingRule != 'Hayır' && hasSmokingBreaks) ...[
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: breakStart1,
+                  decoration: const InputDecoration(
+                    labelText: '1. mola baslangic',
+                    border: OutlineInputBorder(),
+                  ),
+                  hint: Text(context.t('selectOption')),
+                  items: workTimeOptions
+                      .map(
+                        (time) => DropdownMenuItem<String>(
+                          value: time,
+                          child: Text(time),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      breakStart1 = value;
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: breakEnd1,
+                  decoration: const InputDecoration(
+                    labelText: '1. mola bitis',
+                    border: OutlineInputBorder(),
+                  ),
+                  hint: Text(context.t('selectOption')),
+                  items: workTimeOptions
+                      .map(
+                        (time) => DropdownMenuItem<String>(
+                          value: time,
+                          child: Text(time),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      breakEnd1 = value;
+                    });
+                  },
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('2. mola var'),
+                  value: hasSecondBreak,
+                  onChanged: (value) {
+                    setState(() {
+                      hasSecondBreak = value;
+                      if (!value) {
+                        breakStart2 = null;
+                        breakEnd2 = null;
+                      }
+                    });
+                  },
+                ),
+                if (hasSecondBreak) ...[
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: breakStart2,
+                    decoration: const InputDecoration(
+                      labelText: '2. mola baslangic',
+                      border: OutlineInputBorder(),
+                    ),
+                    hint: Text(context.t('selectOption')),
+                    items: workTimeOptions
+                        .map(
+                          (time) => DropdownMenuItem<String>(
+                            value: time,
+                            child: Text(time),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        breakStart2 = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: breakEnd2,
+                    decoration: const InputDecoration(
+                      labelText: '2. mola bitis',
+                      border: OutlineInputBorder(),
+                    ),
+                    hint: Text(context.t('selectOption')),
+                    items: workTimeOptions
+                        .map(
+                          (time) => DropdownMenuItem<String>(
+                            value: time,
+                            child: Text(time),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        breakEnd2 = value;
+                      });
+                    },
+                  ),
+                ],
+              ],
               const SizedBox(height: 20),
               sectionTitle(context.t('healthStatus')),
               CheckboxListTile(
@@ -827,6 +1244,57 @@ class _SurveyPageState extends State<SurveyPage> {
                 },
               ),
               const SizedBox(height: 25),
+              sectionTitle('Sure Bariyeri Tercihi'),
+              DropdownButtonFormField<String>(
+                initialValue: durationBarrierPreference,
+                decoration: const InputDecoration(
+                  labelText: 'Sure bariyerlerini nasil buluyorsun?',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'Begeniyorum',
+                    child: Text('Begeniyorum'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Farketmez',
+                    child: Text('Farketmez'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Begenmiyorum',
+                    child: Text('Begenmiyorum'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Istemiyorum',
+                    child: Text('Istemiyorum'),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    durationBarrierPreference = value ?? 'Farketmez';
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              if (durationBarrierPreference != 'Istemiyorum')
+                DropdownButtonFormField<String>(
+                  initialValue: durationBarrierFrequencyPreference,
+                  decoration: const InputDecoration(
+                    labelText: 'Sure bariyeri sikligi nasil olmali?',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'Az', child: Text('Az')),
+                    DropdownMenuItem(value: 'Orta', child: Text('Orta')),
+                    DropdownMenuItem(value: 'Cok', child: Text('Cok')),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      durationBarrierFrequencyPreference = value ?? 'Orta';
+                    });
+                  },
+                ),
+              const SizedBox(height: 25),
               SizedBox(
                 width: double.infinity,
                 height: 60,
@@ -843,8 +1311,9 @@ class _SurveyPageState extends State<SurveyPage> {
                       return;
                     }
 
+                    late final String recordId;
                     try {
-                      await _saveInitialSurveyRecord();
+                      recordId = await _saveInitialSurveyRecord();
                     } catch (error, stackTrace) {
                       debugPrint(
                         '[SurveyPage] Initial survey save failed: $error',
@@ -854,6 +1323,10 @@ class _SurveyPageState extends State<SurveyPage> {
                       _showValidationMessage(saveErrorMessage);
                       return;
                     }
+
+                    await _runBulkPermissionFlow(recordId);
+
+                    if (!mounted) return;
 
                     if (!context.mounted) return;
                     final navigator = Navigator.of(context);

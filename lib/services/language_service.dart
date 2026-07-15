@@ -6,19 +6,103 @@ import 'storage_service.dart';
 class LanguageService {
   static const String _languageCodeKey = 'selected_language_code';
 
+  // Top 40 dilleri - primary ve other
   static const Map<String, Locale> supportedLanguages = {
+    // Primary (featured first)
     'tr': Locale('tr'),
     'en': Locale('en'),
     'de': Locale('de'),
     'ar': Locale('ar'),
     'fr': Locale('fr'),
     'es': Locale('es'),
+    // Other languages (top 35)
+    'pt': Locale('pt'),
+    'it': Locale('it'),
+    'pl': Locale('pl'),
+    'ru': Locale('ru'),
+    'ja': Locale('ja'),
+    'zh': Locale('zh'),
+    'ko': Locale('ko'),
+    'hi': Locale('hi'),
+    'bn': Locale('bn'),
+    'pa': Locale('pa'),
+    'te': Locale('te'),
+    'mr': Locale('mr'),
+    'ta': Locale('ta'),
+    'gu': Locale('gu'),
+    'kn': Locale('kn'),
+    'ml': Locale('ml'),
+    'th': Locale('th'),
+    'vi': Locale('vi'),
+    'id': Locale('id'),
+    'ms': Locale('ms'),
+    'fil': Locale('fil'),
+    'uk': Locale('uk'),
+    'ro': Locale('ro'),
+    'el': Locale('el'),
+    'hu': Locale('hu'),
+    'cs': Locale('cs'),
+    'sv': Locale('sv'),
+    'da': Locale('da'),
+    'no': Locale('no'),
+    'fi': Locale('fi'),
+    'nl': Locale('nl'),
+    'be': Locale('be'),
+    'sr': Locale('sr'),
+    'hr': Locale('hr'),
   };
+
+  // Dil adları (UI'da gösterilecek)
+  static const Map<String, String> languageNames = {
+    'tr': 'Türkçe',
+    'en': 'English',
+    'de': 'Deutsch',
+    'ar': 'العربية',
+    'fr': 'Français',
+    'es': 'Español',
+    'pt': 'Português',
+    'it': 'Italiano',
+    'pl': 'Polski',
+    'ru': 'Русский',
+    'ja': '日本語',
+    'zh': '中文',
+    'ko': '한국어',
+    'hi': 'हिन्दी',
+    'bn': 'বাংলা',
+    'pa': 'ਪੰਜਾਬੀ',
+    'te': 'తెలుగు',
+    'mr': 'मराठी',
+    'ta': 'தமிழ்',
+    'gu': 'ગુજરાતી',
+    'kn': 'ಕನ್ನಡ',
+    'ml': 'മലയാളം',
+    'th': 'ไทย',
+    'vi': 'Tiếng Việt',
+    'id': 'Bahasa Indonesia',
+    'ms': 'Bahasa Melayu',
+    'fil': 'Filipino',
+    'uk': 'Українська',
+    'ro': 'Română',
+    'el': 'Ελληνικά',
+    'hu': 'Magyar',
+    'cs': 'Čeština',
+    'sv': 'Svenska',
+    'da': 'Dansk',
+    'no': 'Norsk',
+    'fi': 'Suomi',
+    'nl': 'Nederlands',
+    'be': 'Беларуская',
+    'sr': 'Српски',
+    'hr': 'Hrvatski',
+  };
+
+  // Primary 6 dilleri (ilk seçenekler)
+  static const List<String> primaryLanguages = ['tr', 'en', 'de', 'ar', 'fr', 'es'];
 
   static Future<String> loadSelectedLanguageCode() async {
     final prefs = await SharedPreferences.getInstance();
-    final code = prefs.getString(_languageCodeKey) ?? 'tr';
-    return supportedLanguages.containsKey(code) ? code : 'tr';
+    final code = prefs.getString(_languageCodeKey) ?? 'en';
+    return supportedLanguages.containsKey(code) ? code : 'en';
   }
 
   static Future<bool> hasSavedLanguageSelection() async {
@@ -28,12 +112,14 @@ class LanguageService {
 
   static Future<Locale> loadSelectedLocale() async {
     final code = await loadSelectedLanguageCode();
-    return supportedLanguages[code] ?? const Locale('tr');
+    return supportedLanguages[code] ?? const Locale('en');
   }
 
   static Future<void> saveSelectedLanguageCode(String languageCode) async {
     final prefs = await SharedPreferences.getInstance();
-    final code = supportedLanguages.containsKey(languageCode) ? languageCode : 'tr';
+    final code = supportedLanguages.containsKey(languageCode)
+        ? languageCode
+        : 'en';
     await prefs.setString(_languageCodeKey, code);
     await StorageService().saveLanguageSelectionHistory(code);
   }

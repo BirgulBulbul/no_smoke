@@ -34,8 +34,9 @@ class _BreathTestPageState extends State<BreathTestPage> {
   final StorageService _storageService = StorageService();
   Timer? _timer;
   int _currentTest = 1;
-  int _test1Seconds = 0;
-  int _test2Seconds = 0;
+  final List<int> _attemptSeconds = <int>[];
+  bool _isResting = false;
+  int _restSecondsLeft = 0;
   bool _isRunning = false;
 
   @override
@@ -45,6 +46,9 @@ class _BreathTestPageState extends State<BreathTestPage> {
   }
 
   void _startCurrentTest() {
+    if (_isResting) {
+      return;
+    }
     _timer?.cancel();
     _stopwatch.reset();
     _stopwatch.start();
@@ -70,35 +74,73 @@ class _BreathTestPageState extends State<BreathTestPage> {
       _isRunning = false;
     });
 
-    if (_currentTest == 1) {
-      _test1Seconds = _stopwatch.elapsed.inSeconds;
-      setState(() {
-        _currentTest = 2;
-      });
+    final seconds = _stopwatch.elapsed.inSeconds;
+    _attemptSeconds.add(seconds);
+
+    if (_attemptSeconds.length >= 3) {
+      unawaited(_navigateToResult());
       return;
     }
 
-    _test2Seconds = _stopwatch.elapsed.inSeconds;
-    unawaited(_navigateToResult());
+    _startRestInterval();
+  }
+
+  void _startRestInterval() {
+    _timer?.cancel();
+    setState(() {
+      _isResting = true;
+      _restSecondsLeft = 20;
+    });
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _restSecondsLeft -= 1;
+      });
+
+      if (_restSecondsLeft <= 0) {
+        timer.cancel();
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isResting = false;
+          _currentTest = _attemptSeconds.length + 1;
+        });
+      }
+    });
   }
 
   Future<void> _navigateToResult() async {
-    final averageSeconds = ((_test1Seconds + _test2Seconds) / 2).round();
-    late final int riskScore;
+    final sorted = [..._attemptSeconds]..sort((a, b) => b.compareTo(a));
+    final bestSeconds = sorted.first;
+    final averageSeconds =
+        (_attemptSeconds.reduce((a, b) => a + b) / _attemptSeconds.length)
+            .round();
+    final consistencyGap = sorted.length >= 2 ? (sorted[0] - sorted[1]) : 0;
+    late int riskScore;
     late final String riskLevel;
 
-    if (averageSeconds <= 4) {
+    if (bestSeconds <= 5) {
       riskScore = 85;
       riskLevel = 'KRİTİK';
-    } else if (averageSeconds <= 7) {
+    } else if (bestSeconds <= 9) {
       riskScore = 65;
       riskLevel = 'YÜKSEK';
-    } else if (averageSeconds <= 10) {
-      riskScore = 40;
+    } else if (bestSeconds <= 14) {
+      riskScore = 45;
       riskLevel = 'ORTA';
     } else {
-      riskScore = 15;
+      riskScore = 20;
       riskLevel = 'DÜŞÜK';
+    }
+
+    if (consistencyGap >= 4) {
+      // Low repeatability means measurements may be unstable, keep risk cautious.
+      riskScore = (riskScore + 6).clamp(0, 100);
     }
 
     if (!mounted) {
@@ -118,18 +160,24 @@ class _BreathTestPageState extends State<BreathTestPage> {
           riskScore: riskScore,
           riskLevel: riskLevel,
           packsPerDay: widget.packsPerDay,
-          exhaleTestSeconds: _test1Seconds,
-          inhaleTestSeconds: _test2Seconds,
+          exhaleTestSeconds: bestSeconds,
+          inhaleTestSeconds: averageSeconds,
         ),
       ),
     );
   }
 
   Future<void> _saveBreathResultAndOpenHome(int baseRiskScore) async {
+    final sorted = [..._attemptSeconds]..sort((a, b) => b.compareTo(a));
+    final bestSeconds = sorted.first;
+    final averageSeconds =
+        (_attemptSeconds.reduce((a, b) => a + b) / _attemptSeconds.length)
+            .round();
+
     final adjustedRiskScore = await _storageService.calculateAdjustedRiskScore(
       baseScore: baseRiskScore,
-      exhaleSeconds: _test1Seconds,
-      inhaleSeconds: _test2Seconds,
+      exhaleSeconds: bestSeconds,
+      inhaleSeconds: averageSeconds,
     );
 
     if (!mounted) {
@@ -151,8 +199,8 @@ class _BreathTestPageState extends State<BreathTestPage> {
       title: context.t('breathTestRecordTitle'),
       name: widget.name,
       packsPerDay: widget.packsPerDay,
-      exhaleTestSeconds: _test1Seconds,
-      inhaleTestSeconds: _test2Seconds,
+      exhaleTestSeconds: bestSeconds,
+      inhaleTestSeconds: averageSeconds,
       riskScore: adjustedRiskScore,
       riskLevel: adjustedRiskLevel,
     );
@@ -172,8 +220,8 @@ class _BreathTestPageState extends State<BreathTestPage> {
         profession: 'Belirtilmedi',
         sleepTime: '21:00',
         wakeTime: '07:00',
-        latestExhaleSeconds: _test1Seconds,
-        latestInhaleSeconds: _test2Seconds,
+        latestExhaleSeconds: bestSeconds,
+        latestInhaleSeconds: averageSeconds,
       ),
     );
 
@@ -238,8 +286,8 @@ class _BreathTestPageState extends State<BreathTestPage> {
             riskScore: baseRiskScore,
             riskLevel: baseRiskLevel,
             packsPerDay: widget.packsPerDay,
-            exhaleTestSeconds: _test1Seconds,
-            inhaleTestSeconds: _test2Seconds,
+            exhaleTestSeconds: bestSeconds,
+            inhaleTestSeconds: averageSeconds,
           ),
         ),
       );
@@ -259,15 +307,14 @@ class _BreathTestPageState extends State<BreathTestPage> {
   }
 
   String _getInstruction() {
-    if (_currentTest == 1) {
-      return context.t('test1Instruction');
+    if (_isResting) {
+      return 'Kisa dinlenme: normal nefes al. Sonraki denemeye hazirlan.';
     }
-
-    return context.t('test2Instruction');
+    return 'Dik otur, burundan derin nefes al, 2 saniye tut ve tek seferde kontrollu ver. 3 deneme yapilacak, en iyi skor kaydedilir.';
   }
 
   String _getCurrentTestName() {
-    return _currentTest == 1 ? context.t('test1Name') : context.t('test2Name');
+    return 'Nefes dayanimi denemesi';
   }
 
   @override
@@ -282,7 +329,7 @@ class _BreathTestPageState extends State<BreathTestPage> {
           children: [
             const SizedBox(height: 24),
             Text(
-              '${context.t('test')} $_currentTest / 2',
+              '${context.t('test')} $_currentTest / 3',
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -301,14 +348,22 @@ class _BreathTestPageState extends State<BreathTestPage> {
             ),
             const SizedBox(height: 40),
             Text(
-              '${_stopwatch.elapsed.inSeconds}',
+              _isResting
+                  ? '$_restSecondsLeft'
+                  : '${_stopwatch.elapsed.inSeconds}',
               style: const TextStyle(
                 fontSize: 64,
                 fontWeight: FontWeight.bold,
               ),
             ),
+            const SizedBox(height: 8),
+            if (_attemptSeconds.isNotEmpty)
+              Text(
+                'Denemeler: ${_attemptSeconds.join('s | ')}s',
+                textAlign: TextAlign.center,
+              ),
             const Spacer(),
-            if (!_isRunning)
+            if (!_isRunning && !_isResting)
               SizedBox(
                 width: double.infinity,
                 height: 60,
@@ -317,6 +372,18 @@ class _BreathTestPageState extends State<BreathTestPage> {
                   child: Text(
                     context.t('start'),
                     style: TextStyle(fontSize: 20),
+                  ),
+                ),
+              )
+            else if (_isResting)
+              SizedBox(
+                width: double.infinity,
+                height: 60,
+                child: ElevatedButton(
+                  onPressed: null,
+                  child: Text(
+                    'Dinlenme: $_restSecondsLeft sn',
+                    style: const TextStyle(fontSize: 20),
                   ),
                 ),
               )

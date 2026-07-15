@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 import '../core/app_texts.dart';
@@ -67,8 +66,50 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
   int _weeklyCompletionRate = 6;
   String _dailyTaskAdherenceLevel = 'orta';
   String _commandBurdenLevel = 'orta';
+  int _dailyBreathTestTarget = 1;
   String _lunchTime = '12:30';
   String _dinnerTime = '19:00';
+  int _mmrcGrade = 2;
+  int _catCough = 1;
+  int _catPhlegm = 1;
+  int _catChestTightness = 1;
+  int _catBreathlessnessStairs = 1;
+  int _catActivityLimitation = 1;
+  int _catConfidenceLeavingHome = 1;
+  int _catSleepQualityResp = 1;
+  int _catEnergyLevelResp = 1;
+  int _warningNightBreathlessnessDays = 0;
+  int _warningSputumIncreaseDays = 0;
+  int _warningSputumColorChangeDays = 0;
+  int _warningWheezeDays = 0;
+  bool _profileContextChanged = false;
+  String? _updatedWorkStart;
+  String? _updatedWorkEnd;
+  String _updatedWorkplaceSmokingRule = 'Hayır';
+  final Set<String> _updatedWorkingDays = <String>{
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+  };
+  bool _updatedHasSmokingBreaks = false;
+  String? _updatedBreakStart1;
+  String? _updatedBreakEnd1;
+  bool _updatedHasSecondBreak = false;
+  String? _updatedBreakStart2;
+  String? _updatedBreakEnd2;
+  String _updatedWeekendSmokingPattern = 'Ayni';
+
+  static const List<Map<String, String>> _workDayOptions = [
+    {'key': 'Mon', 'label': 'Pzt'},
+    {'key': 'Tue', 'label': 'Sal'},
+    {'key': 'Wed', 'label': 'Car'},
+    {'key': 'Thu', 'label': 'Per'},
+    {'key': 'Fri', 'label': 'Cum'},
+    {'key': 'Sat', 'label': 'Cmt'},
+    {'key': 'Sun', 'label': 'Paz'},
+  ];
 
   String get _resolvedPacksPerDay {
     if (_packOption == '3+ paket') {
@@ -97,7 +138,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
     if (recentRisk >= 60 && mounted) {
       setState(() {
         _autoDetailedByRisk = true;
-        _detailedMode = true;
+        // Keep quick mode as default for lower user effort.
+        _detailedMode = false;
       });
     }
   }
@@ -110,6 +152,9 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         : _buildQuickWeeklyPayload();
     final weeklyRiskScore = _calculateWeeklyRiskScore(weeklyPayload);
     final weeklyRiskLevel = _levelFromScore(weeklyRiskScore);
+    final effectiveDailyBreathTarget = _resolveEffectiveDailyBreathTarget(
+      weeklyPayload,
+    );
     final record = SurveyRecord(
       id: recordId,
       completedAt: now,
@@ -122,7 +167,9 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
       riskScore: weeklyRiskScore,
       riskLevel: weeklyRiskLevel,
       consecutiveSmokingHabit: _consecutiveSmokingHabit,
-      consecutiveSmokingCount: _consecutiveSmokingHabit == 'Evet' ? _consecutiveSmokingCount : null,
+      consecutiveSmokingCount: _consecutiveSmokingHabit == 'Evet'
+          ? _consecutiveSmokingCount
+          : null,
     );
     await _storageService.saveSurveyRecord(record);
 
@@ -131,10 +178,34 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
       triggers: const [],
       healthConditions: const [],
       stressLevel: _mood,
+      workStart: _profileUpdateValue(weeklyPayload, 'workStart'),
+      workEnd: _profileUpdateValue(weeklyPayload, 'workEnd'),
+      workplaceSmokingRule: _profileUpdateValue(
+        weeklyPayload,
+        'workplaceSmokingRule',
+      ),
+      workingDays: _profileUpdateListValue(weeklyPayload, 'workingDays'),
+      breakWindows: _profileUpdateBreakWindows(weeklyPayload),
+      weekendSmokingPattern: _profileUpdateValue(
+        weeklyPayload,
+        'weekendSmokingPattern',
+      ),
       weeklyPayload: weeklyPayload,
     );
     await _storageService.saveSetting('lunch_time', _lunchTime);
     await _storageService.saveSetting('dinner_time', _dinnerTime);
+    await _storageService.saveSetting(
+      'daily_breath_test_target',
+      effectiveDailyBreathTarget.toString(),
+    );
+    await _storageService.saveSetting(
+      'last_respiratory_burden',
+      _calculateRespiratoryBurdenFromPayload(weeklyPayload).round().toString(),
+    );
+    await _storageService.saveSetting(
+      'last_respiratory_state',
+      _resolveRespiratoryState(weeklyPayload),
+    );
 
     await _storageService.saveUserProfileSnapshot(
       UserProfileSnapshot(
@@ -145,7 +216,9 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         firstCigaretteRange: 'unknown',
         smokeFreeRange: 'unknown',
         consecutiveSmokingHabit: _consecutiveSmokingHabit ?? 'Hayır',
-        consecutiveSmokingCount: _consecutiveSmokingHabit == 'Evet' ? _consecutiveSmokingCount : null,
+        consecutiveSmokingCount: _consecutiveSmokingHabit == 'Evet'
+            ? _consecutiveSmokingCount
+            : null,
         triggers: const [],
         healthConditions: const [],
         profession: 'Belirtilmedi',
@@ -197,11 +270,45 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         'weeklyCompletionRate': _weeklyCompletionRate,
         'dailyTaskAdherenceLevel': _dailyTaskAdherenceLevel,
         'commandBurdenLevel': _commandBurdenLevel,
+        'dailyBreathTestTarget': _dailyBreathTestTarget,
         'mostHelpfulCategory': 'breath',
       },
-      'mealSchedule': {
-        'lunchTime': _lunchTime,
-        'dinnerTime': _dinnerTime,
+      'respiratory': {
+        'mmrcGrade': _mmrcGrade,
+        'catLike': {
+          'cough': _catCough,
+          'phlegm': _catPhlegm,
+          'chestTightness': _catChestTightness,
+          'breathlessnessStairs': _catBreathlessnessStairs,
+          'activityLimitation': _catActivityLimitation,
+          'confidenceLeavingHome': _catConfidenceLeavingHome,
+          'sleepQualityResp': _catSleepQualityResp,
+          'energyLevelResp': _catEnergyLevelResp,
+        },
+        'warningSigns': {
+          'increasedNightBreathlessnessDays': _warningNightBreathlessnessDays,
+          'sputumIncreaseDays': _warningSputumIncreaseDays,
+          'sputumColorChangeDays': _warningSputumColorChangeDays,
+          'wheezeDays': _warningWheezeDays,
+        },
+      },
+      'mealSchedule': {'lunchTime': _lunchTime, 'dinnerTime': _dinnerTime},
+      'profileUpdate': {
+        'changed': _profileContextChanged,
+        'workStart': _profileContextChanged ? _updatedWorkStart : null,
+        'workEnd': _profileContextChanged ? _updatedWorkEnd : null,
+        'workplaceSmokingRule': _profileContextChanged
+            ? _updatedWorkplaceSmokingRule
+            : null,
+        'workingDays': _profileContextChanged
+            ? _updatedWorkingDays.toList()
+            : <String>[],
+        'breakWindows': _profileContextChanged
+            ? _updatedBreakWindows()
+            : <Map<String, String>>[],
+        'weekendSmokingPattern': _profileContextChanged
+            ? _updatedWeekendSmokingPattern
+            : null,
       },
     };
   }
@@ -240,6 +347,19 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         : isBad
         ? 4
         : 6;
+    final quickRespiratoryBase = _quickRespiratoryBaselineSymptom(
+      isGood: isGood,
+      isBad: isBad,
+    );
+    final quickCatAverage =
+        ((_catCough + _catBreathlessnessStairs + quickRespiratoryBase) / 3)
+            .round()
+            .clamp(0, 5);
+    final quickMmrc = _mmrcGrade.clamp(1, 5);
+    final quickWarningNight = _warningNightBreathlessnessDays.clamp(0, 7);
+    final quickWarningSputumColor = _warningSputumColorChangeDays.clamp(0, 7);
+    final quickWarningSputumIncrease = _warningSputumIncreaseDays.clamp(0, 7);
+    final quickWarningWheeze = _warningWheezeDays.clamp(0, 7);
 
     return {
       'avgCigarettesPerDay': packAvg,
@@ -288,13 +408,134 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
             ? 'az'
             : 'orta',
         'commandBurdenLevel': isBad ? 'cok' : 'orta',
+        'dailyBreathTestTarget': _dailyBreathTestTarget,
         'mostHelpfulCategory': 'breath',
       },
-      'mealSchedule': {
-        'lunchTime': _lunchTime,
-        'dinnerTime': _dinnerTime,
+      'respiratory': {
+        'mmrcGrade': quickMmrc,
+        'catLike': {
+          'cough': _catCough.clamp(0, 5),
+          'phlegm': quickCatAverage,
+          'chestTightness': quickCatAverage,
+          'breathlessnessStairs': _catBreathlessnessStairs.clamp(0, 5),
+          'activityLimitation': quickCatAverage,
+          'confidenceLeavingHome': quickCatAverage,
+          'sleepQualityResp': quickCatAverage,
+          'energyLevelResp': quickCatAverage,
+        },
+        'warningSigns': {
+          'increasedNightBreathlessnessDays': quickWarningNight,
+          'sputumIncreaseDays': quickWarningSputumIncrease,
+          'sputumColorChangeDays': quickWarningSputumColor,
+          'wheezeDays': quickWarningWheeze,
+        },
+      },
+      'mealSchedule': {'lunchTime': _lunchTime, 'dinnerTime': _dinnerTime},
+      'profileUpdate': {
+        'changed': _profileContextChanged,
+        'workStart': _profileContextChanged ? _updatedWorkStart : null,
+        'workEnd': _profileContextChanged ? _updatedWorkEnd : null,
+        'workplaceSmokingRule': _profileContextChanged
+            ? _updatedWorkplaceSmokingRule
+            : null,
+        'workingDays': _profileContextChanged
+            ? _updatedWorkingDays.toList()
+            : <String>[],
+        'breakWindows': _profileContextChanged
+            ? _updatedBreakWindows()
+            : <Map<String, String>>[],
+        'weekendSmokingPattern': _profileContextChanged
+            ? _updatedWeekendSmokingPattern
+            : null,
       },
     };
+  }
+
+  List<Map<String, String>> _updatedBreakWindows() {
+    final result = <Map<String, String>>[];
+    if (_updatedHasSmokingBreaks &&
+        _updatedBreakStart1 != null &&
+        _updatedBreakEnd1 != null &&
+        _updatedBreakStart1!.isNotEmpty &&
+        _updatedBreakEnd1!.isNotEmpty) {
+      result.add({'start': _updatedBreakStart1!, 'end': _updatedBreakEnd1!});
+    }
+    if (_updatedHasSmokingBreaks &&
+        _updatedHasSecondBreak &&
+        _updatedBreakStart2 != null &&
+        _updatedBreakEnd2 != null &&
+        _updatedBreakStart2!.isNotEmpty &&
+        _updatedBreakEnd2!.isNotEmpty) {
+      result.add({'start': _updatedBreakStart2!, 'end': _updatedBreakEnd2!});
+    }
+    return result;
+  }
+
+  String? _profileUpdateValue(Map<String, dynamic> payload, String key) {
+    final update = payload['profileUpdate'] as Map<String, dynamic>?;
+    if (update == null || update['changed'] != true) {
+      return null;
+    }
+    final value = update[key];
+    if (value == null) {
+      return null;
+    }
+    final text = value.toString().trim();
+    if (text.isEmpty) {
+      return null;
+    }
+    return text;
+  }
+
+  List<String>? _profileUpdateListValue(
+    Map<String, dynamic> payload,
+    String key,
+  ) {
+    final update = payload['profileUpdate'] as Map<String, dynamic>?;
+    if (update == null || update['changed'] != true) {
+      return null;
+    }
+    final raw = update[key] as List<dynamic>?;
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+    return raw.map((item) => item.toString()).toList();
+  }
+
+  List<Map<String, String>>? _profileUpdateBreakWindows(
+    Map<String, dynamic> payload,
+  ) {
+    final update = payload['profileUpdate'] as Map<String, dynamic>?;
+    if (update == null || update['changed'] != true) {
+      return null;
+    }
+    final raw = update['breakWindows'] as List<dynamic>?;
+    if (raw == null || raw.isEmpty) {
+      return <Map<String, String>>[];
+    }
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (item) => {
+            'start': item['start']?.toString() ?? '',
+            'end': item['end']?.toString() ?? '',
+          },
+        )
+        .where((item) => item['start']!.isNotEmpty && item['end']!.isNotEmpty)
+        .toList();
+  }
+
+  int _quickRespiratoryBaselineSymptom({
+    required bool isGood,
+    required bool isBad,
+  }) {
+    if (isBad) {
+      return 3;
+    }
+    if (isGood) {
+      return 1;
+    }
+    return 2;
   }
 
   List<String> _timeOptions() {
@@ -340,7 +581,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
     final alcoholDays = payload['alcoholDays'] as int? ?? 0;
     final socialDays = payload['socialSmokingContextDays'] as int? ?? 0;
 
-    final withdrawal = payload['withdrawal'] as Map<String, dynamic>? ??
+    final withdrawal =
+        payload['withdrawal'] as Map<String, dynamic>? ??
         const <String, dynamic>{};
     final withdrawalSum =
         (withdrawal['irritability'] as int? ?? 0) +
@@ -349,7 +591,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         (withdrawal['concentrationProblem'] as int? ?? 0) +
         (withdrawal['appetiteIncrease'] as int? ?? 0);
 
-    final trigger = payload['triggerExposureDays'] as Map<String, dynamic>? ??
+    final trigger =
+        payload['triggerExposureDays'] as Map<String, dynamic>? ??
         const <String, dynamic>{};
     final triggerSum =
         (trigger['coffee'] as int? ?? 0) +
@@ -360,14 +603,63 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         (trigger['social'] as int? ?? 0) +
         (trigger['alcohol'] as int? ?? 0);
 
-    final task = payload['task'] as Map<String, dynamic>? ??
+    final task =
+        payload['task'] as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final treatment =
+        payload['treatment'] as Map<String, dynamic>? ??
         const <String, dynamic>{};
-    final treatment = payload['treatment'] as Map<String, dynamic>? ??
+    final respiratory =
+        payload['respiratory'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final catLike =
+        respiratory['catLike'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final warningSigns =
+        respiratory['warningSigns'] as Map<String, dynamic>? ??
         const <String, dynamic>{};
     final completion = task['weeklyCompletionRate'] as int? ?? 0;
     final adherence = treatment['adherence'] as int? ?? 0;
     final dailyTaskAdherenceLevel =
-      (task['dailyTaskAdherenceLevel']?.toString() ?? 'orta').toLowerCase();
+        (task['dailyTaskAdherenceLevel']?.toString() ?? 'orta').toLowerCase();
+    final mmrcGrade = (respiratory['mmrcGrade'] as int? ?? 2).clamp(1, 5);
+
+    final catSum =
+        (catLike['cough'] as int? ?? 0) +
+        (catLike['phlegm'] as int? ?? 0) +
+        (catLike['chestTightness'] as int? ?? 0) +
+        (catLike['breathlessnessStairs'] as int? ?? 0) +
+        (catLike['activityLimitation'] as int? ?? 0) +
+        (catLike['confidenceLeavingHome'] as int? ?? 0) +
+        (catLike['sleepQualityResp'] as int? ?? 0) +
+        (catLike['energyLevelResp'] as int? ?? 0);
+    final warningNight =
+        (warningSigns['increasedNightBreathlessnessDays'] as int? ?? 0).clamp(
+          0,
+          7,
+        );
+    final warningSputumIncrease =
+        (warningSigns['sputumIncreaseDays'] as int? ?? 0).clamp(0, 7);
+    final warningSputumColor =
+        (warningSigns['sputumColorChangeDays'] as int? ?? 0).clamp(0, 7);
+    final warningWheeze = (warningSigns['wheezeDays'] as int? ?? 0).clamp(0, 7);
+
+    final mmrcComponent = ((mmrcGrade - 1) / 4) * 100;
+    final catComponent = (catSum / 40) * 100;
+    final warningComponent =
+        (((warningNight +
+                        warningSputumIncrease +
+                        warningSputumColor +
+                        warningWheeze) /
+                    28) *
+                100)
+            .clamp(0, 100)
+            .toDouble();
+    final respiratoryBurden =
+        ((0.35 * mmrcComponent) +
+                (0.45 * catComponent) +
+                (0.20 * warningComponent))
+            .clamp(0, 100)
+            .toDouble();
 
     var c = avgCigs <= 0
         ? 0
@@ -398,21 +690,27 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
     final a = (alcoholDays * 8 + socialDays * 6).clamp(0, 100);
     final m = ((10 - motivation).clamp(0, 10) * 10).clamp(0, 100);
     final s = ((10 - selfEfficacy).clamp(0, 10) * 10).clamp(0, 100);
-    final p =
-        (100 - ((0.6 * completion * 10) + (0.4 * adherence * 10)))
-            .round()
-            .clamp(0, 100);
-
-    var score = (0.22 * c +
-            0.18 * l +
-            0.18 * w +
-            0.14 * t +
-            0.08 * a +
-            0.08 * m +
-            0.06 * s +
-            0.06 * p)
+    final p = (100 - ((0.6 * completion * 10) + (0.4 * adherence * 10)))
         .round()
         .clamp(0, 100);
+
+    var score =
+        (0.22 * c +
+                0.18 * l +
+                0.18 * w +
+                0.14 * t +
+                0.08 * a +
+                0.08 * m +
+                0.06 * s +
+                0.06 * p)
+            .round();
+    score = ((0.82 * score) + (0.18 * respiratoryBurden)).round().clamp(0, 100);
+    if (mmrcGrade >= 4 && warningComponent >= 50) {
+      score = (score + 8).clamp(0, 100);
+    }
+    if (warningSputumColor >= 3 && warningNight >= 3) {
+      score = (score + 6).clamp(0, 100);
+    }
     if (dailyTaskAdherenceLevel == 'az') {
       score = (score + 8).clamp(0, 100);
     } else if (dailyTaskAdherenceLevel == 'cok') {
@@ -425,6 +723,83 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
       score = (score - 8).clamp(0, 100);
     }
     return score;
+  }
+
+  double _calculateRespiratoryBurdenFromPayload(Map<String, dynamic> payload) {
+    final respiratory =
+        payload['respiratory'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final catLike =
+        respiratory['catLike'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final warningSigns =
+        respiratory['warningSigns'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+
+    final mmrcGrade = (respiratory['mmrcGrade'] as int? ?? 2).clamp(1, 5);
+    final mmrcComponent = ((mmrcGrade - 1) / 4) * 100;
+
+    final catSum =
+        (catLike['cough'] as int? ?? 0) +
+        (catLike['phlegm'] as int? ?? 0) +
+        (catLike['chestTightness'] as int? ?? 0) +
+        (catLike['breathlessnessStairs'] as int? ?? 0) +
+        (catLike['activityLimitation'] as int? ?? 0) +
+        (catLike['confidenceLeavingHome'] as int? ?? 0) +
+        (catLike['sleepQualityResp'] as int? ?? 0) +
+        (catLike['energyLevelResp'] as int? ?? 0);
+    final catComponent = (catSum / 40) * 100;
+
+    final warningTotal =
+        (warningSigns['increasedNightBreathlessnessDays'] as int? ?? 0) +
+        (warningSigns['sputumIncreaseDays'] as int? ?? 0) +
+        (warningSigns['sputumColorChangeDays'] as int? ?? 0) +
+        (warningSigns['wheezeDays'] as int? ?? 0);
+    final warningComponent = ((warningTotal / 28) * 100).clamp(0, 100);
+
+    return ((0.35 * mmrcComponent) +
+            (0.45 * catComponent) +
+            (0.20 * warningComponent))
+        .clamp(0, 100)
+        .toDouble();
+  }
+
+  String _resolveRespiratoryState(Map<String, dynamic> payload) {
+    final respiratory =
+        payload['respiratory'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final warningSigns =
+        respiratory['warningSigns'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final mmrcGrade = (respiratory['mmrcGrade'] as int? ?? 2).clamp(1, 5);
+    final warningNight =
+        (warningSigns['increasedNightBreathlessnessDays'] as int? ?? 0).clamp(
+          0,
+          7,
+        );
+    final warningSputumColor =
+        (warningSigns['sputumColorChangeDays'] as int? ?? 0).clamp(0, 7);
+    final burden = _calculateRespiratoryBurdenFromPayload(payload);
+
+    final severeCombo =
+        (mmrcGrade >= 4 && warningNight >= 4) ||
+        (warningNight >= 4 && warningSputumColor >= 3);
+    if (burden >= 65 || severeCombo) {
+      return 'clinical_review_recommended';
+    }
+    if (burden >= 35 || warningNight >= 3 || warningSputumColor >= 2) {
+      return 'monitor_closer';
+    }
+    return 'stable';
+  }
+
+  int _resolveEffectiveDailyBreathTarget(Map<String, dynamic> payload) {
+    final burden = _calculateRespiratoryBurdenFromPayload(payload);
+    var target = _dailyBreathTestTarget;
+    if (burden >= 65) {
+      target = (target + 1).clamp(1, 4);
+    }
+    return target;
   }
 
   String _levelFromScore(int score) {
@@ -501,10 +876,71 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
             if (_autoDetailedByRisk) ...[
               const SizedBox(height: 8),
               const Text(
-                'Gecen hafta risk yuksek oldugu icin Detayli mod otomatik acildi.',
+                'Gecen hafta risk yuksek gorunuyor. Istersen Detayli moda gecerek daha ince ayar yapabilirsin.',
                 style: TextStyle(fontSize: 12),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickRespiratoryMiniCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Hizli Solunum Kontrolu',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Kisa modda da solunum durumunu daha dogru yansitmak icin 3 alan doldur.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<int>(
+              initialValue: _mmrcGrade,
+              decoration: const InputDecoration(
+                labelText: 'Nefes darligi derecesi (mMRC benzeri 1-5)',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 1, child: Text('1')),
+                DropdownMenuItem(value: 2, child: Text('2')),
+                DropdownMenuItem(value: 3, child: Text('3')),
+                DropdownMenuItem(value: 4, child: Text('4')),
+                DropdownMenuItem(value: 5, child: Text('5')),
+              ],
+              onChanged: (value) => setState(() => _mmrcGrade = value ?? 2),
+            ),
+            const SizedBox(height: 8),
+            _intSlider(
+              label: 'Oksuruk (0-5)',
+              value: _catCough,
+              min: 0,
+              max: 5,
+              onChanged: (v) => setState(() => _catCough = v),
+            ),
+            _intSlider(
+              label: 'Merdivende nefes darligi (0-5)',
+              value: _catBreathlessnessStairs,
+              min: 0,
+              max: 5,
+              onChanged: (v) => setState(() => _catBreathlessnessStairs = v),
+            ),
+            _intSlider(
+              label: 'Gece artan nefes darligi gunu (0-7)',
+              value: _warningNightBreathlessnessDays,
+              min: 0,
+              max: 7,
+              onChanged: (v) =>
+                  setState(() => _warningNightBreathlessnessDays = v),
+            ),
           ],
         ),
       ),
@@ -530,9 +966,7 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(context.t('weeklySurvey')),
-      ),
+      appBar: AppBar(title: Text(context.t('weeklySurvey'))),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -544,6 +978,20 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
             ),
             const SizedBox(height: 16),
             _buildSurveyModeCard(),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: const Text(
+                'Bu bolum tani testi degildir. KOAH tanisi icin spirometri ve doktor degerlendirmesi gerekir. Sonuclar takip amaclidir.',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
             const SizedBox(height: 12),
             PacksPerDaySection(
               selectedPackOption: _packOption,
@@ -554,7 +1002,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
                   if (value != '3+ paket') {
                     _highPackOption = null;
                   } else {
-                    _highPackOption ??= PacksPerDaySection.highPackOptions.first;
+                    _highPackOption ??=
+                        PacksPerDaySection.highPackOptions.first;
                   }
                 });
               },
@@ -573,7 +1022,10 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
               ),
               items: [
                 DropdownMenuItem(value: 'İyi', child: Text(context.t('good'))),
-                DropdownMenuItem(value: 'Orta', child: Text(context.t('stressMedium'))),
+                DropdownMenuItem(
+                  value: 'Orta',
+                  child: Text(context.t('stressMedium')),
+                ),
                 DropdownMenuItem(value: 'Kötü', child: Text(context.t('bad'))),
               ],
               onChanged: (value) {
@@ -733,8 +1185,7 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
                 value: _socialSmokingContextDays,
                 min: 0,
                 max: 7,
-                onChanged: (v) =>
-                    setState(() => _socialSmokingContextDays = v),
+                onChanged: (v) => setState(() => _socialSmokingContextDays = v),
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
@@ -762,8 +1213,7 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
               SwitchListTile(
                 title: const Text('Danismanlik/quitline kullanildi'),
                 value: _usedCounselingOrQuitline,
-                onChanged: (v) =>
-                    setState(() => _usedCounselingOrQuitline = v),
+                onChanged: (v) => setState(() => _usedCounselingOrQuitline = v),
               ),
               _intSlider(
                 label: 'Tedavi uyumu (0-10)',
@@ -812,9 +1262,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
                   DropdownMenuItem(value: 'orta', child: Text('Orta')),
                   DropdownMenuItem(value: 'cok', child: Text('Cok')),
                 ],
-                onChanged: (value) => setState(
-                  () => _dailyTaskAdherenceLevel = value ?? 'orta',
-                ),
+                onChanged: (value) =>
+                    setState(() => _dailyTaskAdherenceLevel = value ?? 'orta'),
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
@@ -830,6 +1279,153 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
                 ],
                 onChanged: (value) =>
                     setState(() => _commandBurdenLevel = value ?? 'orta'),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                initialValue: _dailyBreathTestTarget,
+                decoration: const InputDecoration(
+                  labelText: 'Gunluk nefes testi sayisi tercihin (min 1)',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 1,
+                    child: Text('1 kez (zorunlu minimum)'),
+                  ),
+                  DropdownMenuItem(value: 2, child: Text('2 kez')),
+                  DropdownMenuItem(value: 3, child: Text('3 kez')),
+                  DropdownMenuItem(value: 4, child: Text('4 kez')),
+                ],
+                onChanged: (value) =>
+                    setState(() => _dailyBreathTestTarget = value ?? 1),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                initialValue: _mmrcGrade,
+                decoration: const InputDecoration(
+                  labelText: 'Nefes darligi derecesi (mMRC benzeri 1-5)',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 1,
+                    child: Text('1 - Sadece hizli yuruyuste/yokusta zorlanma'),
+                  ),
+                  DropdownMenuItem(
+                    value: 2,
+                    child: Text('2 - Duz yolda yasitlara gore daha yavas'),
+                  ),
+                  DropdownMenuItem(
+                    value: 3,
+                    child: Text('3 - Duz yolda bir sure sonra durma ihtiyaci'),
+                  ),
+                  DropdownMenuItem(
+                    value: 4,
+                    child: Text('4 - 100 metre civari yuruyuste durma'),
+                  ),
+                  DropdownMenuItem(
+                    value: 5,
+                    child: Text('5 - Ev icinde belirgin nefes darligi'),
+                  ),
+                ],
+                onChanged: (value) => setState(() => _mmrcGrade = value ?? 2),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Solunum semptom yuk (CAT benzeri 0-5)',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              _intSlider(
+                label: 'Oksuruk',
+                value: _catCough,
+                min: 0,
+                max: 5,
+                onChanged: (v) => setState(() => _catCough = v),
+              ),
+              _intSlider(
+                label: 'Balgam',
+                value: _catPhlegm,
+                min: 0,
+                max: 5,
+                onChanged: (v) => setState(() => _catPhlegm = v),
+              ),
+              _intSlider(
+                label: 'Goguste sikisma',
+                value: _catChestTightness,
+                min: 0,
+                max: 5,
+                onChanged: (v) => setState(() => _catChestTightness = v),
+              ),
+              _intSlider(
+                label: 'Merdiven/yokus nefes darligi',
+                value: _catBreathlessnessStairs,
+                min: 0,
+                max: 5,
+                onChanged: (v) => setState(() => _catBreathlessnessStairs = v),
+              ),
+              _intSlider(
+                label: 'Gunluk aktivite kisitlanmasi',
+                value: _catActivityLimitation,
+                min: 0,
+                max: 5,
+                onChanged: (v) => setState(() => _catActivityLimitation = v),
+              ),
+              _intSlider(
+                label: 'Disari cikma guveni dusuklugu',
+                value: _catConfidenceLeavingHome,
+                min: 0,
+                max: 5,
+                onChanged: (v) => setState(() => _catConfidenceLeavingHome = v),
+              ),
+              _intSlider(
+                label: 'Solunuma bagli uyku bozulmasi',
+                value: _catSleepQualityResp,
+                min: 0,
+                max: 5,
+                onChanged: (v) => setState(() => _catSleepQualityResp = v),
+              ),
+              _intSlider(
+                label: 'Solunuma bagli enerji dusuklugu',
+                value: _catEnergyLevelResp,
+                min: 0,
+                max: 5,
+                onChanged: (v) => setState(() => _catEnergyLevelResp = v),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Uyari isaretleri (haftalik gun 0-7)',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              _intSlider(
+                label: 'Gece artan nefes darligi',
+                value: _warningNightBreathlessnessDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) =>
+                    setState(() => _warningNightBreathlessnessDays = v),
+              ),
+              _intSlider(
+                label: 'Balgam artisi',
+                value: _warningSputumIncreaseDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) =>
+                    setState(() => _warningSputumIncreaseDays = v),
+              ),
+              _intSlider(
+                label: 'Balgam renginde degisim',
+                value: _warningSputumColorChangeDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) =>
+                    setState(() => _warningSputumColorChangeDays = v),
+              ),
+              _intSlider(
+                label: 'Hirilti/wheeze',
+                value: _warningWheezeDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) => setState(() => _warningWheezeDays = v),
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
@@ -867,11 +1463,257 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
                 onChanged: (value) =>
                     setState(() => _dinnerTime = value ?? '19:00'),
               ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Ilk profile gore is/uyku/calisma duzeni degisti mi?',
+                ),
+                value: _profileContextChanged,
+                onChanged: (value) {
+                  setState(() {
+                    _profileContextChanged = value;
+                  });
+                },
+              ),
+              if (_profileContextChanged) ...[
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: _updatedWorkStart,
+                  decoration: const InputDecoration(
+                    labelText: 'Yeni mesai baslangic saati',
+                    border: OutlineInputBorder(),
+                  ),
+                  hint: Text(context.t('selectOption')),
+                  items: _timeOptions()
+                      .map(
+                        (time) => DropdownMenuItem<String>(
+                          value: time,
+                          child: Text(time),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) =>
+                      setState(() => _updatedWorkStart = value),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: _updatedWorkEnd,
+                  decoration: const InputDecoration(
+                    labelText: 'Yeni mesai bitis saati',
+                    border: OutlineInputBorder(),
+                  ),
+                  hint: Text(context.t('selectOption')),
+                  items: _timeOptions()
+                      .map(
+                        (time) => DropdownMenuItem<String>(
+                          value: time,
+                          child: Text(time),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setState(() => _updatedWorkEnd = value),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: _updatedWorkplaceSmokingRule,
+                  decoration: const InputDecoration(
+                    labelText: 'Is yerinde sigara kurali',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'Evet', child: Text('Evet')),
+                    DropdownMenuItem(value: 'Hayır', child: Text('Hayır')),
+                    DropdownMenuItem(
+                      value: 'Sadece molalarda',
+                      child: Text('Sadece molalarda'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _updatedWorkplaceSmokingRule = value ?? 'Hayır';
+                      if (_updatedWorkplaceSmokingRule == 'Hayır') {
+                        _updatedHasSmokingBreaks = false;
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Calisilan gunler',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _workDayOptions.map((day) {
+                    final key = day['key']!;
+                    return FilterChip(
+                      label: Text(day['label']!),
+                      selected: _updatedWorkingDays.contains(key),
+                      onSelected: (value) {
+                        setState(() {
+                          if (value) {
+                            _updatedWorkingDays.add(key);
+                          } else {
+                            _updatedWorkingDays.remove(key);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: _updatedWeekendSmokingPattern,
+                  decoration: const InputDecoration(
+                    labelText: 'Hafta sonu icim paterni',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'Ayni',
+                      child: Text('Hafta ici ile ayni'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'HaftaSonuDahaFazla',
+                      child: Text('Hafta sonu daha fazla'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'HaftaSonuDahaAz',
+                      child: Text('Hafta sonu daha az'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _updatedWeekendSmokingPattern = value ?? 'Ayni';
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+                if (_updatedWorkplaceSmokingRule != 'Hayır')
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Sigara molasi var'),
+                    value: _updatedHasSmokingBreaks,
+                    onChanged: (value) {
+                      setState(() {
+                        _updatedHasSmokingBreaks = value;
+                        if (!value) {
+                          _updatedHasSecondBreak = false;
+                          _updatedBreakStart1 = null;
+                          _updatedBreakEnd1 = null;
+                          _updatedBreakStart2 = null;
+                          _updatedBreakEnd2 = null;
+                        }
+                      });
+                    },
+                  ),
+                if (_updatedWorkplaceSmokingRule != 'Hayır' &&
+                    _updatedHasSmokingBreaks) ...[
+                  DropdownButtonFormField<String>(
+                    initialValue: _updatedBreakStart1,
+                    decoration: const InputDecoration(
+                      labelText: '1. mola baslangic',
+                      border: OutlineInputBorder(),
+                    ),
+                    hint: Text(context.t('selectOption')),
+                    items: _timeOptions()
+                        .map(
+                          (time) => DropdownMenuItem<String>(
+                            value: time,
+                            child: Text(time),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => _updatedBreakStart1 = value),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: _updatedBreakEnd1,
+                    decoration: const InputDecoration(
+                      labelText: '1. mola bitis',
+                      border: OutlineInputBorder(),
+                    ),
+                    hint: Text(context.t('selectOption')),
+                    items: _timeOptions()
+                        .map(
+                          (time) => DropdownMenuItem<String>(
+                            value: time,
+                            child: Text(time),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => _updatedBreakEnd1 = value),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('2. mola var'),
+                    value: _updatedHasSecondBreak,
+                    onChanged: (value) {
+                      setState(() {
+                        _updatedHasSecondBreak = value;
+                        if (!value) {
+                          _updatedBreakStart2 = null;
+                          _updatedBreakEnd2 = null;
+                        }
+                      });
+                    },
+                  ),
+                  if (_updatedHasSecondBreak) ...[
+                    DropdownButtonFormField<String>(
+                      initialValue: _updatedBreakStart2,
+                      decoration: const InputDecoration(
+                        labelText: '2. mola baslangic',
+                        border: OutlineInputBorder(),
+                      ),
+                      hint: Text(context.t('selectOption')),
+                      items: _timeOptions()
+                          .map(
+                            (time) => DropdownMenuItem<String>(
+                              value: time,
+                              child: Text(time),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _updatedBreakStart2 = value),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: _updatedBreakEnd2,
+                      decoration: const InputDecoration(
+                        labelText: '2. mola bitis',
+                        border: OutlineInputBorder(),
+                      ),
+                      hint: Text(context.t('selectOption')),
+                      items: _timeOptions()
+                          .map(
+                            (time) => DropdownMenuItem<String>(
+                              value: time,
+                              child: Text(time),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _updatedBreakEnd2 = value),
+                    ),
+                  ],
+                ],
+              ],
             ] else ...[
               const SizedBox(height: 10),
               const Text(
                 'Hizli mod secili. Temel sorulara gore risk otomatik hesaplanir. Istersen Detayli moda gecip tum parametreleri duzenleyebilirsin.',
               ),
+              const SizedBox(height: 10),
+              _buildQuickRespiratoryMiniCard(),
             ],
             ConsecutiveSmokingSection(
               consecutiveSmokingHabit: _consecutiveSmokingHabit,
@@ -905,6 +1747,11 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
               height: 50,
               child: ElevatedButton(
                 onPressed: () async {
+                  final payload = _detailedMode
+                      ? _buildWeeklyPayload()
+                      : _buildQuickWeeklyPayload();
+                  final score = _calculateWeeklyRiskScore(payload);
+                  final level = _levelFromScore(score);
                   await _saveWeeklySurvey();
                   final latestUserName = await _resolveLatestUserName();
                   if (!mounted) return;
@@ -916,18 +1763,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
                       MaterialPageRoute(
                         builder: (_) => HomePage(
                           name: widget.nameSeed ?? latestUserName,
-                          riskScore: _calculateWeeklyRiskScore(
-                            _detailedMode
-                                ? _buildWeeklyPayload()
-                                : _buildQuickWeeklyPayload(),
-                          ),
-                          riskLevel: _levelFromScore(
-                            _calculateWeeklyRiskScore(
-                              _detailedMode
-                                  ? _buildWeeklyPayload()
-                                  : _buildQuickWeeklyPayload(),
-                            ),
-                          ),
+                          riskScore: score,
+                          riskLevel: level,
                         ),
                       ),
                     );

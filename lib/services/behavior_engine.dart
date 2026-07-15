@@ -470,13 +470,16 @@ class BehaviorEngine {
   }
 
   Map<String, dynamic> evaluateWeeklySurveyRisk(
-    Map<String, dynamic>? weeklyPayload,
-  ) {
+    Map<String, dynamic>? weeklyPayload, {
+    Map<String, dynamic>? profileContext,
+  }) {
     if (weeklyPayload == null || weeklyPayload.isEmpty) {
       return {
         'weeklyRiskScore': 40,
         'weeklyRiskLevel': 'medium',
         'recommendedMode': 'balanced',
+        'respiratoryBurden': 25,
+        'respiratoryState': 'stable',
         'topRiskDrivers': <String>[],
       };
     }
@@ -518,8 +521,56 @@ class BehaviorEngine {
     final treatment =
         weeklyPayload['treatment'] as Map<String, dynamic>? ??
         const <String, dynamic>{};
+    final respiratory =
+        weeklyPayload['respiratory'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final catLike =
+        respiratory['catLike'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final warningSigns =
+        respiratory['warningSigns'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
     final completion = _toInt(task['weeklyCompletionRate']);
     final adherence = _toInt(treatment['adherence']);
+
+    final mmrcGrade = _toInt(respiratory['mmrcGrade']).clamp(1, 5);
+    final catSum =
+        _toInt(catLike['cough']) +
+        _toInt(catLike['phlegm']) +
+        _toInt(catLike['chestTightness']) +
+        _toInt(catLike['breathlessnessStairs']) +
+        _toInt(catLike['activityLimitation']) +
+        _toInt(catLike['confidenceLeavingHome']) +
+        _toInt(catLike['sleepQualityResp']) +
+        _toInt(catLike['energyLevelResp']);
+    final warningNight = _toInt(
+      warningSigns['increasedNightBreathlessnessDays'],
+    ).clamp(0, 7);
+    final warningSputumIncrease = _toInt(
+      warningSigns['sputumIncreaseDays'],
+    ).clamp(0, 7);
+    final warningSputumColor = _toInt(
+      warningSigns['sputumColorChangeDays'],
+    ).clamp(0, 7);
+    final warningWheeze = _toInt(warningSigns['wheezeDays']).clamp(0, 7);
+
+    final mmrcComponent = ((mmrcGrade - 1) / 4) * 100;
+    final catComponent = (catSum / 40) * 100;
+    final warningComponent =
+        (((warningNight +
+                        warningSputumIncrease +
+                        warningSputumColor +
+                        warningWheeze) /
+                    28) *
+                100)
+            .clamp(0, 100)
+            .toDouble();
+    final respiratoryBurden =
+        ((0.35 * mmrcComponent) +
+                (0.45 * catComponent) +
+                (0.20 * warningComponent))
+            .clamp(0, 100)
+            .toDouble();
 
     var c = _consumptionScore(avgCigs);
     if (delta == 'increased') {
@@ -543,21 +594,37 @@ class BehaviorEngine {
     final a = (alcoholDays * 8 + socialDays * 6).clamp(0, 100);
     final m = ((10 - motivation).clamp(0, 10) * 10).clamp(0, 100);
     final s = ((10 - selfEfficacy).clamp(0, 10) * 10).clamp(0, 100);
-    final p =
-        (100 - ((0.6 * completion * 10) + (0.4 * adherence * 10)))
-            .round()
-            .clamp(0, 100);
-
-    var weeklyRiskScore = (0.22 * c +
-            0.18 * l +
-            0.18 * w +
-            0.14 * t +
-            0.08 * a +
-            0.08 * m +
-            0.06 * s +
-            0.06 * p)
+    final p = (100 - ((0.6 * completion * 10) + (0.4 * adherence * 10)))
         .round()
         .clamp(0, 100);
+
+    var weeklyRiskScore =
+        (0.22 * c +
+                0.18 * l +
+                0.18 * w +
+                0.14 * t +
+                0.08 * a +
+                0.08 * m +
+                0.06 * s +
+                0.06 * p)
+            .round();
+
+    weeklyRiskScore = ((0.82 * weeklyRiskScore) + (0.18 * respiratoryBurden))
+        .round()
+        .clamp(0, 100);
+
+    if (mmrcGrade >= 4 && warningComponent >= 50) {
+      weeklyRiskScore = (weeklyRiskScore + 8).clamp(0, 100);
+    }
+    if (warningSputumColor >= 3 && warningNight >= 3) {
+      weeklyRiskScore = (weeklyRiskScore + 6).clamp(0, 100);
+    }
+
+    final structuralModifier = _structuralConsumptionRiskModifier(
+      avgCigs: avgCigs,
+      profileContext: profileContext,
+    );
+    weeklyRiskScore = (weeklyRiskScore + structuralModifier).clamp(0, 100);
 
     if (lapseCount >= 3 && _toInt(weeklyPayload['cravingMax']) >= 8) {
       weeklyRiskScore = (weeklyRiskScore + 12).clamp(0, 100);
@@ -575,8 +642,13 @@ class BehaviorEngine {
       MapEntry('Motivasyon dusuklugu', m),
       MapEntry('Oz yeterlilik dusuklugu', s),
       MapEntry('Plan uyumsuzlugu', p),
-    ]
-      ..sort((x, y) => y.value.compareTo(x.value));
+      MapEntry('Respiratuar yuk', respiratoryBurden.round()),
+      if (structuralModifier > 0)
+        MapEntry(
+          'Mesai/icerik uyumsuzlugu',
+          (40 + (structuralModifier * 5)).clamp(0, 100),
+        ),
+    ]..sort((x, y) => y.value.compareTo(x.value));
 
     final topDrivers = weightedDrivers
         .take(3)
@@ -591,18 +663,133 @@ class BehaviorEngine {
         ? 'medium'
         : 'low';
 
-    final mode = weeklyRiskScore >= 65 || lapseCount >= 2 || _toInt(weeklyPayload['cravingMax']) >= 8
+    final mode =
+        weeklyRiskScore >= 65 ||
+            lapseCount >= 2 ||
+            _toInt(weeklyPayload['cravingMax']) >= 8 ||
+            respiratoryBurden >= 65
         ? 'aggressive'
         : (weeklyRiskScore < 40 && lapseCount == 0 && completion >= 7)
         ? 'protective'
         : 'balanced';
 
+    final respiratoryState = _resolveRespiratoryState(
+      burden: respiratoryBurden,
+      mmrcGrade: mmrcGrade,
+      warningNight: warningNight,
+      warningSputumColor: warningSputumColor,
+    );
+
     return {
       'weeklyRiskScore': weeklyRiskScore,
       'weeklyRiskLevel': level,
       'recommendedMode': mode,
+      'respiratoryBurden': respiratoryBurden.round(),
+      'respiratoryState': respiratoryState,
+      'structuralModifier': structuralModifier,
       'topRiskDrivers': topDrivers,
     };
+  }
+
+  int _structuralConsumptionRiskModifier({
+    required int avgCigs,
+    Map<String, dynamic>? profileContext,
+  }) {
+    if (profileContext == null || profileContext.isEmpty || avgCigs <= 0) {
+      return 0;
+    }
+
+    final workplaceRule =
+        (profileContext['workplaceSmokingRule']?.toString() ?? '')
+            .toLowerCase();
+    final workStart = profileContext['workStart']?.toString();
+    final workEnd = profileContext['workEnd']?.toString();
+    final weekendPattern =
+        (profileContext['weekendSmokingPattern']?.toString() ?? '')
+            .toLowerCase();
+    final workingDays =
+        (profileContext['workingDays'] as List<dynamic>? ?? const <dynamic>[])
+            .map((item) => item.toString())
+            .toList();
+    final breakWindows =
+        (profileContext['breakWindows'] as List<dynamic>? ?? const <dynamic>[])
+            .whereType<Map<String, dynamic>>()
+            .toList();
+
+    final workMinutes = _windowDurationMinutes(workStart, workEnd) ?? 0;
+    final breakMinutes = breakWindows.fold<int>(0, (sum, item) {
+      return sum +
+          (_windowDurationMinutes(
+                item['start']?.toString(),
+                item['end']?.toString(),
+              ) ??
+              0);
+    });
+    final workingDayCount = workingDays.isEmpty ? 5 : workingDays.length;
+
+    var modifier = 0;
+    final noSmokingAtWork = workplaceRule.contains('hay');
+    final onlyBreakSmoking = workplaceRule.contains('mola');
+
+    if (workMinutes >= 300 && noSmokingAtWork) {
+      if (avgCigs >= 15) {
+        modifier += 6;
+      } else if (avgCigs >= 10) {
+        modifier += 3;
+      }
+    }
+
+    if (workMinutes >= 240 && onlyBreakSmoking) {
+      final breakAllowance = breakMinutes <= 0
+          ? 0
+          : (breakMinutes / 25).floor();
+      if (breakAllowance <= 2 && avgCigs >= 18) {
+        modifier += 5;
+      } else if (breakAllowance <= 3 && avgCigs >= 12) {
+        modifier += 2;
+      }
+    }
+
+    if (workingDayCount <= 3 && avgCigs >= 20) {
+      modifier += 2;
+    }
+
+    if (weekendPattern.contains('fazla')) {
+      modifier += 4;
+    } else if (weekendPattern.contains('az')) {
+      modifier -= 2;
+    }
+
+    return modifier.clamp(-4, 12);
+  }
+
+  int? _windowDurationMinutes(String? startTime, String? endTime) {
+    final start = _parseMinutes(startTime);
+    final end = _parseMinutes(endTime);
+    if (start == null || end == null) {
+      return null;
+    }
+
+    if (end >= start) {
+      return end - start;
+    }
+    return (24 * 60) - start + end;
+  }
+
+  int? _parseMinutes(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null;
+    }
+    final parts = value.split(':');
+    if (parts.length != 2) {
+      return null;
+    }
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) {
+      return null;
+    }
+    return (hour.clamp(0, 23) * 60) + minute.clamp(0, 59);
   }
 
   Map<String, double> learnDynamicWeightsFromRecentHistory({
@@ -622,8 +809,8 @@ class BehaviorEngine {
         : breathRecords;
     final breathValues = recentBreath
         .map(
-          (item) =>
-              ((item.exhaleTestSeconds + item.inhaleTestSeconds) / 2).toDouble(),
+          (item) => ((item.exhaleTestSeconds + item.inhaleTestSeconds) / 2)
+              .toDouble(),
         )
         .toList();
     final breathVolatility = _stdDev(breathValues);
@@ -638,15 +825,20 @@ class BehaviorEngine {
         ? 0.0
         : (packLevels.last - packLevels.first).toDouble();
 
-    final smokingWeight = (1.0 + (packSlope > 0 ? 0.18 : 0.0)).clamp(0.85, 1.35);
-    final breathWeight =
-        (1.0 + ((breathVolatility / 4.0).clamp(0.0, 0.28))).clamp(0.85, 1.35);
-    final consecutiveWeight =
-        (1.0 + ((failureRate - 0.35).clamp(-0.2, 0.3))).clamp(0.85, 1.35);
-    final triggerWeight =
-        (1.0 + ((failureRate - 0.25).clamp(-0.15, 0.25))).clamp(0.85, 1.35);
-    final hourWeight =
-        (1.0 + ((failureRate - 0.30).clamp(-0.15, 0.22))).clamp(0.85, 1.35);
+    final smokingWeight = (1.0 + (packSlope > 0 ? 0.18 : 0.0)).clamp(
+      0.85,
+      1.35,
+    );
+    final breathWeight = (1.0 + ((breathVolatility / 4.0).clamp(0.0, 0.28)))
+        .clamp(0.85, 1.35);
+    final consecutiveWeight = (1.0 + ((failureRate - 0.35).clamp(-0.2, 0.3)))
+        .clamp(0.85, 1.35);
+    final triggerWeight = (1.0 + ((failureRate - 0.25).clamp(-0.15, 0.25)))
+        .clamp(0.85, 1.35);
+    final hourWeight = (1.0 + ((failureRate - 0.30).clamp(-0.15, 0.22))).clamp(
+      0.85,
+      1.35,
+    );
 
     return {
       'smoking': smokingWeight,
@@ -1331,12 +1523,11 @@ class BehaviorEngine {
       }
     }
 
-    final recentAverages = sorted
-        .reversed
+    final recentAverages = sorted.reversed
         .take(5)
         .map(
-          (item) =>
-              ((item.exhaleTestSeconds + item.inhaleTestSeconds) / 2).toDouble(),
+          (item) => ((item.exhaleTestSeconds + item.inhaleTestSeconds) / 2)
+              .toDouble(),
         )
         .toList();
     final variability = _stdDev(recentAverages);
@@ -1365,8 +1556,11 @@ class BehaviorEngine {
     final previous = sorted.length > 1 ? sorted[sorted.length - 2] : null;
 
     var adjustment = 0;
-    final packDelta = _packLevel(latest.packsPerDay) -
-        (previous == null ? _packLevel(latest.packsPerDay) : _packLevel(previous.packsPerDay));
+    final packDelta =
+        _packLevel(latest.packsPerDay) -
+        (previous == null
+            ? _packLevel(latest.packsPerDay)
+            : _packLevel(previous.packsPerDay));
     if (packDelta > 0) {
       adjustment += min(packDelta * 4, 12);
     } else if (packDelta < 0) {
@@ -1453,7 +1647,8 @@ class BehaviorEngine {
     }
 
     final mean = values.reduce((a, b) => a + b) / values.length;
-    final variance = values
+    final variance =
+        values
             .map((value) => pow(value - mean, 2).toDouble())
             .reduce((a, b) => a + b) /
         values.length;
@@ -1553,5 +1748,23 @@ class BehaviorEngine {
       return int.tryParse(value) ?? 0;
     }
     return 0;
+  }
+
+  String _resolveRespiratoryState({
+    required double burden,
+    required int mmrcGrade,
+    required int warningNight,
+    required int warningSputumColor,
+  }) {
+    final severeCombo =
+        (mmrcGrade >= 4 && warningNight >= 4) ||
+        (warningNight >= 4 && warningSputumColor >= 3);
+    if (burden >= 65 || severeCombo) {
+      return 'clinical_review_recommended';
+    }
+    if (burden >= 35 || warningNight >= 3 || warningSputumColor >= 2) {
+      return 'monitor_closer';
+    }
+    return 'stable';
   }
 }

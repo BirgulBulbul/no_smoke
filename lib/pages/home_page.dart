@@ -1,18 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../core/app_texts.dart';
 import '../models/survey_record.dart';
 import '../models/user_profile_snapshot.dart';
+import '../pages/breath_test_page.dart';
 import '../pages/mandatory_task_page.dart';
+import '../pages/personal_progress_page.dart';
 import '../pages/protocol_violations_page.dart';
 import '../pages/task_follow_up_page.dart';
 import '../pages/weekly_survey_page.dart';
 import '../services/discipline_protocol_service.dart';
 import '../services/notification_service.dart';
-import '../services/permission_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/no_smoke_logo.dart';
 
@@ -47,7 +47,7 @@ class _HomePageState extends State<HomePage> {
   bool _mandatoryTaskShown = false;
   bool _weeklySurveyMandatoryShown = false;
   bool _weeklySurveyPromptShownSession = false;
-  bool _criticalNotificationPermissionCheckedSession = false;
+  bool _dailyBreathMandatoryShownSession = false;
   bool _registrationCompleted = false;
   bool _isCompletingRegistration = false;
   String _lastSurveyDateText = '...';
@@ -93,6 +93,11 @@ class _HomePageState extends State<HomePage> {
   int _recentFailureCount = 0;
   String _nextTaskNotificationText = '...';
   String _notificationContextReasonText = '...';
+  String _durationBarrierPreference = 'neutral';
+  String _durationBarrierFrequencyPreference = 'orta';
+  bool _durationBarrierEnabled = true;
+  int _lastRespiratoryBurden = 25;
+  String _lastRespiratoryState = 'stable';
   double _weeklyAverage = 0;
   double _monthlyAverage = 0;
   double _dailyAverage = 0;
@@ -246,7 +251,8 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _askTaskOutcome(String taskTitle) async {
     final now = DateTime.now();
-    final startedAt = _taskStartedAt[taskTitle] ??
+    final startedAt =
+        _taskStartedAt[taskTitle] ??
         now.subtract(_resolveInitialTaskDelay(taskTitle));
     final sensorEvents = await _storageService.loadSensorUsageBetween(
       startAt: startedAt,
@@ -290,9 +296,9 @@ class _HomePageState extends State<HomePage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t('taskSuspiciousReset'))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.t('taskSuspiciousReset'))));
       return;
     }
 
@@ -460,8 +466,9 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadHomeMetrics() async {
     final registrationCompleted = await _storageService
         .loadInitialRegistrationCompleted();
-    final notificationContextReason =
-      await _storageService.loadSetting('last_notification_context_reason');
+    final notificationContextReason = await _storageService.loadSetting(
+      'last_notification_context_reason',
+    );
     final lastDate = await _storageService.loadLastSurveyDate();
     final latestBreath = await _storageService.loadLatestBreathRecord();
     final metrics = await _storageService.loadBreathMetrics();
@@ -469,6 +476,20 @@ class _HomePageState extends State<HomePage> {
     final consecutiveSmokingSummary = await _storageService
         .loadConsecutiveSmokingSummary();
     final taskOutcomeSummary = await _storageService.loadTaskOutcomeSummary();
+    final durationBarrierPreference = await _storageService.loadSetting(
+      'duration_barrier_preference',
+    );
+    final durationBarrierFrequencyPreference = await _storageService
+        .loadSetting('duration_barrier_frequency_preference');
+    final durationBarrierEnabledRaw = await _storageService.loadSetting(
+      'duration_barrier_enabled',
+    );
+    final lastRespiratoryBurdenRaw = await _storageService.loadSetting(
+      'last_respiratory_burden',
+    );
+    final lastRespiratoryStateRaw = await _storageService.loadSetting(
+      'last_respiratory_state',
+    );
     final behavior = registrationCompleted
         ? await _storageService.loadBehaviorDashboard()
         : await _storageService.loadLatestBehaviorSnapshot();
@@ -523,8 +544,7 @@ class _HomePageState extends State<HomePage> {
       _progressSummaryText = behavior?.progressSummary ?? 'Stable';
       _todaysTasks = behavior?.todaysTasks ?? const [];
       _coachCommands = behavior?.coachCommands ?? const [];
-        _durationBarrierCommands =
-          behavior?.durationBarrierCommands ?? const [];
+      _durationBarrierCommands = behavior?.durationBarrierCommands ?? const [];
       _commandSuccessScores = behavior?.commandSuccessScores ?? const {};
       _commandCategoryScores = behavior?.commandCategoryScores ?? const {};
       _commandMixMode = behavior?.commandMixMode ?? 'balanced';
@@ -558,6 +578,13 @@ class _HomePageState extends State<HomePage> {
               notificationContextReason.trim().isEmpty)
           ? context.t('taskReasonNoPlanned')
           : notificationContextReason;
+      _durationBarrierPreference = durationBarrierPreference ?? 'neutral';
+      _durationBarrierFrequencyPreference =
+          durationBarrierFrequencyPreference ?? 'orta';
+      _durationBarrierEnabled = (durationBarrierEnabledRaw ?? '1') == '1';
+      _lastRespiratoryBurden =
+          int.tryParse(lastRespiratoryBurdenRaw ?? '25')?.clamp(0, 100) ?? 25;
+      _lastRespiratoryState = lastRespiratoryStateRaw ?? 'stable';
       for (final task in _todaysTasks) {
         _taskStates.putIfAbsent(task, () => 'new');
       }
@@ -573,8 +600,8 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (_registrationCompleted) {
-      final permissionReady = await _ensureCriticalNotificationPermissionGate();
-      if (!permissionReady || !mounted) {
+      await _ensureDailyBreathCadence();
+      if (!mounted) {
         return;
       }
       await _ensureWeeklySurveyCadence();
@@ -588,61 +615,199 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<bool> _ensureCriticalNotificationPermissionGate() async {
-    if (_criticalNotificationPermissionCheckedSession) {
-      return true;
+  Future<void> _ensureDailyBreathCadence() async {
+    if (!_registrationCompleted) {
+      return;
     }
 
-    _criticalNotificationPermissionCheckedSession = true;
-    final granted = await NotificationService.ensureNotificationPermission();
-    if (granted) {
-      return true;
+    final now = DateTime.now();
+    final sleepTime = await _storageService.loadSleepTime() ?? '21:00';
+    final wakeTime = await _storageService.loadSetting('wake_time') ?? '07:00';
+    final preferredRaw = await _storageService.loadSetting(
+      'daily_breath_test_target',
+    );
+    var preferred = int.tryParse(preferredRaw ?? '1') ?? 1;
+    if (preferred < 1) {
+      preferred = 1;
+    }
+    if (preferred > 4) {
+      preferred = 4;
+    }
+    final adaptivePreferred = _resolveAdaptiveBreathReminderCount(preferred);
+
+    final signature =
+        '${now.year}-${now.month}-${now.day}|$sleepTime|$wakeTime|$adaptivePreferred|$_lastRespiratoryState|$_lastRespiratoryBurden';
+    final existing = await _storageService.loadSetting(
+      'last_daily_breath_schedule_signature',
+    );
+    if (existing != signature) {
+      await NotificationService.scheduleAdaptiveDailyBreathReminders(
+        sleepTime: sleepTime,
+        wakeTime: wakeTime,
+        minimumCount: 1,
+        preferredCount: adaptivePreferred,
+      );
+      await _storageService.saveSetting(
+        'last_daily_breath_schedule_signature',
+        signature,
+      );
     }
 
-    if (!mounted) {
-      return false;
+    if (_dailyBreathStatus != 'breathTestDoneToday') {
+      await _presentDailyBreathMandatoryIfNeeded();
+    }
+  }
+
+  int _resolveAdaptiveBreathReminderCount(int baseTarget) {
+    var target = baseTarget.clamp(1, 4);
+
+    // Keep reminders controlled while still reacting to respiratory worsening.
+    if (_lastRespiratoryState == 'clinical_review_recommended') {
+      target = (target + 1).clamp(2, 3);
+    } else if (_lastRespiratoryState == 'monitor_closer') {
+      target = target.clamp(1, 2);
+      if (_lastRespiratoryBurden >= 55) {
+        target = 2;
+      }
+    } else {
+      if (_lastRespiratoryBurden < 30 && _adaptiveRiskScore < 45) {
+        target = target.clamp(1, 2);
+      }
     }
 
-    final action = await showDialog<String>(
+    return target;
+  }
+
+  Color _respiratoryBandColor() {
+    switch (_lastRespiratoryState) {
+      case 'clinical_review_recommended':
+        return Colors.red.shade700;
+      case 'monitor_closer':
+        return Colors.orange.shade700;
+      default:
+        return Colors.green.shade700;
+    }
+  }
+
+  String _respiratoryStateLabel() {
+    switch (_lastRespiratoryState) {
+      case 'clinical_review_recommended':
+        return 'Klinik degerlendirme onerilir';
+      case 'monitor_closer':
+        return 'Yakin izlem';
+      default:
+        return 'Stabil';
+    }
+  }
+
+  Future<void> _presentDailyBreathMandatoryIfNeeded() async {
+    if (!mounted ||
+        !_registrationCompleted ||
+        _dailyBreathMandatoryShownSession) {
+      return;
+    }
+    if (_dailyBreathStatus == 'breathTestDoneToday') {
+      return;
+    }
+    _dailyBreathMandatoryShownSession = true;
+
+    final startNow = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Kritik izin gerekli'),
+          title: const Text('Gunluk nefes testi gerekli'),
           content: const Text(
-            'Sigara icmeme komutlarinin arama-benzeri (tam ekran) calismasi icin bildirim ve tam ekran iznini acman gerekiyor.',
+            'Gelişimi doğru takip etmek için her gün en az 1 profesyonel nefes testi yapılmalı. Şimdi testi başlatalım.',
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop('retry'),
-              child: const Text('Tekrar dene'),
-            ),
             ElevatedButton(
-              onPressed: () => Navigator.of(dialogContext).pop('settings'),
-              child: const Text('Ayarlari ac'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Testi Baslat'),
             ),
           ],
         );
       },
     );
 
-    if (action == 'settings') {
-      await openAppSettings();
+    if (!mounted || startNow != true) {
+      return;
     }
 
-    final recheck = await NotificationService.ensureNotificationPermission();
-    if (!recheck && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Tam ekran arama-benzeri komut bildirimi icin izinler acilmadi. Lutfen Ayarlar > Bildirimler bolumunden izin ver.',
-          ),
+    final packsPerDay = await _resolveLatestPacksPerDay();
+    if (!mounted) {
+      return;
+    }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BreathTestPage(
+          name: widget.name,
+          packsPerDay: packsPerDay,
+          navigateToHomeOnComplete: true,
         ),
-      );
-      return false;
-    }
+      ),
+    );
 
-    return true;
+    if (!mounted) {
+      return;
+    }
+    await _loadHomeMetrics();
+  }
+
+  Future<String> _resolveLatestPacksPerDay() async {
+    final records = await _storageService.loadSurveyHistory();
+    for (final record in records.reversed) {
+      if ((record.packsPerDay).trim().isNotEmpty) {
+        return record.packsPerDay;
+      }
+    }
+    return '1 paketten az';
+  }
+
+  Future<void> _openBreathTestFromMenu() async {
+    final packsPerDay = await _resolveLatestPacksPerDay();
+    if (!mounted) {
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BreathTestPage(
+          name: widget.name,
+          packsPerDay: packsPerDay,
+          navigateToHomeOnComplete: true,
+        ),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    await _loadHomeMetrics();
+  }
+
+  Future<void> _openWeeklySurveyFromMenu() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WeeklySurveyPage(
+          navigateToHomeAfterSave: true,
+          nameSeed: widget.name,
+        ),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    await _loadHomeMetrics();
+  }
+
+  Future<void> _openPersonalProgressScreen() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PersonalProgressPage()),
+    );
   }
 
   Future<void> _ensureWeeklySurveyCadence() async {
@@ -788,17 +953,28 @@ class _HomePageState extends State<HomePage> {
       commands: _coachCommands,
       predictedRiskWindow: _predictedRiskWindow,
     );
-    await _storageService.saveSetting('last_coach_command_signature', signature);
+    await _storageService.saveSetting(
+      'last_coach_command_signature',
+      signature,
+    );
   }
 
   Future<void> _scheduleDurationBarrierNotificationsIfNeeded() async {
-    if (!_registrationCompleted || _durationBarrierCommands.isEmpty) {
+    if (!_registrationCompleted ||
+        !_durationBarrierEnabled ||
+        _durationBarrierCommands.isEmpty) {
       return;
     }
 
+    final limit = _resolveDurationBarrierNotificationLimit();
+    if (limit <= 0) {
+      return;
+    }
+    final spacingMinutes = _resolveDurationBarrierNotificationSpacing();
+
     final now = DateTime.now();
     final signature =
-        '${now.year}-${now.month}-${now.day}|BARRIER|${_durationBarrierCommands.join('|')}';
+        '${now.year}-${now.month}-${now.day}|BARRIER|$limit|$spacingMinutes|${_durationBarrierCommands.join('|')}';
     final existing = await _storageService.loadSetting(
       'last_duration_barrier_signature',
     );
@@ -809,6 +985,8 @@ class _HomePageState extends State<HomePage> {
     await NotificationService.scheduleCoachCommandNotifications(
       commands: _durationBarrierCommands,
       predictedRiskWindow: _predictedRiskWindow,
+      maxNotifications: limit,
+      spacingMinutes: spacingMinutes,
     );
     await _storageService.saveSetting(
       'last_duration_barrier_signature',
@@ -907,9 +1085,9 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Komut 10 dakika ertelendi.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Komut 10 dakika ertelendi.')));
     await _loadHomeMetrics();
   }
 
@@ -933,12 +1111,67 @@ class _HomePageState extends State<HomePage> {
   }
 
   int? _extractDurationBarrierMinutes(String command) {
-    final match = RegExp(r'Sonraki\s+(\d+)\s+dakika', caseSensitive: false)
-        .firstMatch(command);
+    final match = RegExp(
+      r'Sonraki\s+(\d+)\s+dakika',
+      caseSensitive: false,
+    ).firstMatch(command);
     if (match == null) {
       return null;
     }
     return int.tryParse(match.group(1) ?? '');
+  }
+
+  int _resolveDurationBarrierNotificationLimit() {
+    var limit = _durationBarrierFrequencyPreference == 'az'
+        ? 1
+        : _durationBarrierFrequencyPreference == 'cok'
+        ? 3
+        : 2;
+
+    if (_durationBarrierPreference == 'dislike') {
+      limit -= 1;
+    } else if (_durationBarrierPreference == 'like' &&
+        _adaptiveRiskScore >= 70) {
+      limit += 1;
+    }
+
+    if (_recentSuccessCount >= _recentFailureCount + 3) {
+      limit -= 1;
+    } else if (_recentFailureCount > _recentSuccessCount + 1 &&
+        _adaptiveRiskScore >= 70) {
+      limit += 1;
+    }
+
+    if (limit < 1) {
+      return 1;
+    }
+    if (limit > 3) {
+      return 3;
+    }
+    return limit;
+  }
+
+  int _resolveDurationBarrierNotificationSpacing() {
+    var spacing = _durationBarrierFrequencyPreference == 'az'
+        ? 45
+        : _durationBarrierFrequencyPreference == 'cok'
+        ? 20
+        : 30;
+
+    if (_durationBarrierPreference == 'dislike') {
+      spacing += 15;
+    }
+    if (_recentSuccessCount >= _recentFailureCount + 3) {
+      spacing += 10;
+    }
+
+    if (spacing < 15) {
+      return 15;
+    }
+    if (spacing > 90) {
+      return 90;
+    }
+    return spacing;
   }
 
   Future<void> _presentMandatoryTaskIfNeeded() async {
@@ -1224,14 +1457,21 @@ class _HomePageState extends State<HomePage> {
     final isSleepWindow = timingContext['isSleepWindow'] == true;
     final isActiveDuringSleep = timingContext['isActiveDuringSleep'] == true;
     final isWorkWindow = timingContext['isWorkWindow'] == true;
+    final isTodayWorkingDay = timingContext['isTodayWorkingDay'] == true;
+    final isBreakWindow = timingContext['isBreakWindow'] == true;
     final isPhoneBusy = timingContext['isPhoneBusy'] == true;
     final isLongIdle = timingContext['isLongIdle'] == true;
+    final isWeekend = timingContext['isWeekend'] == true;
     final workplaceSmokingRule =
         (timingContext['workplaceSmokingRule'] as String?) ?? '';
+    final weekendSmokingPattern =
+        (timingContext['weekendSmokingPattern'] as String?) ?? 'Ayni';
     final minutesUntilWake =
         (timingContext['minutesUntilWake'] as num?)?.toInt() ?? 0;
     final minutesUntilWorkEnd =
         (timingContext['minutesUntilWorkEnd'] as num?)?.toInt() ?? 0;
+    final minutesUntilNextBreak =
+        (timingContext['minutesUntilNextBreak'] as num?)?.toInt() ?? -1;
 
     if (isDriving) {
       minutes += 20;
@@ -1245,11 +1485,25 @@ class _HomePageState extends State<HomePage> {
       }
     }
 
-    if (isWorkWindow) {
+    if (isWorkWindow && isTodayWorkingDay) {
       if (workplaceSmokingRule == 'Hayır') {
         minutes = minutesUntilWorkEnd + 10 + (index * 5);
       } else if (workplaceSmokingRule == 'Sadece molalarda') {
-        minutes = minutes < 30 ? 30 : minutes;
+        if (isBreakWindow) {
+          minutes = minutes < 8 ? 8 + (index * 4) : minutes;
+        } else if (minutesUntilNextBreak > 0) {
+          minutes = minutesUntilNextBreak + 2 + (index * 4);
+        } else {
+          minutes = minutes < 25 ? 25 : minutes;
+        }
+      }
+    }
+
+    if (isWeekend && !isWorkWindow) {
+      if (weekendSmokingPattern == 'HaftaSonuDahaFazla') {
+        minutes -= 10;
+      } else if (weekendSmokingPattern == 'HaftaSonuDahaAz') {
+        minutes += 10;
       }
     }
 
@@ -1444,6 +1698,7 @@ class _HomePageState extends State<HomePage> {
         return;
       }
       final firstTask = context.t('firstTaskNoSmoke15');
+      final taskStartTitle = context.t('taskStartTitle');
 
       debugPrint('[CompleteRegistration] Creating first task: $firstTask');
       final createdAt = DateTime.now();
@@ -1464,32 +1719,8 @@ class _HomePageState extends State<HomePage> {
       }
 
       try {
-        final telemetryGranted =
-            await PermissionService.ensureTelemetryPermissions();
-        if (!telemetryGranted && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.t('sensorPermissionRecommended'))),
-          );
-        }
-
-        final permissionGranted =
-            await NotificationService.ensureNotificationPermission();
-        if (!permissionGranted && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '${context.t('notificationPermissionRequired')} (tam ekran arama-benzeri bildirim izni gerekli)',
-              ),
-            ),
-          );
-        }
-
-        if (!mounted) {
-          return;
-        }
-
         await NotificationService.showFirstTaskTriggerNotification(
-          taskTitle: context.t('taskStartTitle'),
+          taskTitle: taskStartTitle,
           taskDescription: firstTask,
         );
 
@@ -1607,6 +1838,8 @@ class _HomePageState extends State<HomePage> {
                 '${context.t('lastExhale')}: $_latestExhaleSeconds${context.t('secShort')} • ${context.t('lastInhale')}: $_latestInhaleSeconds${context.t('secShort')}',
                 style: const TextStyle(fontSize: 16),
               ),
+              const SizedBox(height: 16),
+              _buildMainMenuCard(),
               const SizedBox(height: 16),
               _buildBreathTrendCard(),
               const SizedBox(height: 16),
@@ -1739,6 +1972,23 @@ class _HomePageState extends State<HomePage> {
             Text(
               'Haftalik anket riski: $_weeklySurveyRiskScore/100 (${_weeklySurveyRiskLevel.toUpperCase()})',
             ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: _respiratoryBandColor().withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _respiratoryBandColor()),
+              ),
+              child: Text(
+                'Respiratuar durum: ${_respiratoryStateLabel()} • Yuk: $_lastRespiratoryBurden/100',
+                style: TextStyle(
+                  color: _respiratoryBandColor(),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
             if (_weeklyTopRiskDrivers.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(
@@ -1777,11 +2027,11 @@ class _HomePageState extends State<HomePage> {
                         spacing: 8,
                         children: [
                           OutlinedButton(
-                            onPressed: () => _completeDurationBarrier(command),
+                            onPressed: () => _completeCoachCommand(command),
                             child: const Text('Tamam'),
                           ),
                           TextButton(
-                            onPressed: () => _deferDurationBarrier(command),
+                            onPressed: () => _deferCoachCommand(command),
                             child: const Text('Ertele 10 dk'),
                           ),
                         ],
@@ -1810,11 +2060,11 @@ class _HomePageState extends State<HomePage> {
                         spacing: 8,
                         children: [
                           OutlinedButton(
-                            onPressed: () => _completeCoachCommand(command),
+                            onPressed: () => _completeDurationBarrier(command),
                             child: const Text('Tamam'),
                           ),
                           TextButton(
-                            onPressed: () => _deferCoachCommand(command),
+                            onPressed: () => _deferDurationBarrier(command),
                             child: const Text('Ertele 10 dk'),
                           ),
                         ],
@@ -1824,7 +2074,8 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ],
-            if (_coachCommands.isNotEmpty && _commandSuccessScores.isNotEmpty) ...[
+            if (_coachCommands.isNotEmpty &&
+                _commandSuccessScores.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
                 'Komut basari puanlari: ${_formatCommandScores(_coachCommands, _commandSuccessScores)}',
@@ -1862,6 +2113,69 @@ class _HomePageState extends State<HomePage> {
             Text('${context.t('goal180CadenceLabel')}: $cadenceLabel'),
             const SizedBox(height: 6),
             Text(guideText),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMainMenuCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Hizli menu',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SizedBox(
+                  width: 160,
+                  child: ElevatedButton.icon(
+                    onPressed: _openBreathTestFromMenu,
+                    icon: const Icon(Icons.air),
+                    label: const Text('Nefes Testi'),
+                  ),
+                ),
+                SizedBox(
+                  width: 160,
+                  child: OutlinedButton.icon(
+                    onPressed: _openWeeklySurveyFromMenu,
+                    icon: const Icon(Icons.assignment),
+                    label: const Text('Haftalik Anket'),
+                  ),
+                ),
+                SizedBox(
+                  width: 160,
+                  child: OutlinedButton.icon(
+                    onPressed: _openPersonalProgressScreen,
+                    icon: const Icon(Icons.insights),
+                    label: const Text('Kisisel Takip'),
+                  ),
+                ),
+                SizedBox(
+                  width: 160,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ProtocolViolationsPage(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.report_gmailerrorred),
+                    label: const Text('Ihlal Raporu'),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -2294,7 +2608,9 @@ class _HomePageState extends State<HomePage> {
     final take = entries.length < 3 ? entries.length : 3;
     for (var i = 0; i < take; i++) {
       final entry = entries[i];
-      parts.add('${labels[entry.key] ?? entry.key}:%${(entry.value * 100).round()}');
+      parts.add(
+        '${labels[entry.key] ?? entry.key}:%${(entry.value * 100).round()}',
+      );
     }
     return parts.join(' • ');
   }

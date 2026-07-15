@@ -9,7 +9,7 @@ import '../services/storage_service.dart';
 import '../widgets/no_smoke_logo.dart';
 import 'breath_test_page.dart';
 import 'language_selection_page.dart';
-import 'survey_page.dart';
+import 'trial_info_page.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -99,7 +99,7 @@ class _SplashPageState extends State<SplashPage> {
     }
     NoSmokeApp.setLocale(
       context,
-      LanguageService.supportedLanguages[selectedCode] ?? const Locale('tr'),
+      LanguageService.supportedLanguages[selectedCode] ?? const Locale('en'),
     );
 
     final storage = StorageService();
@@ -113,7 +113,7 @@ class _SplashPageState extends State<SplashPage> {
     if (!hasInitialSetup) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const SurveyPage()),
+        MaterialPageRoute(builder: (_) => const TrialInfoPage()),
       );
       return;
     }
