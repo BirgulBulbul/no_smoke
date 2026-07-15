@@ -308,9 +308,9 @@ class _BreathTestPageState extends State<BreathTestPage> {
 
   String _getInstruction() {
     if (_isResting) {
-      return 'Kisa dinlenme: normal nefes al. Sonraki denemeye hazirlan.';
+      return 'Kısa dinlenme: Normal nefes alın.\nSonraki denemeye hazırlanın.';
     }
-    return 'Dik otur, burundan derin nefes al, 2 saniye tut ve tek seferde kontrollu ver. 3 deneme yapilacak, en iyi skor kaydedilir.';
+    return 'Dik oturun, burundan derin nefes alın, \n2 saniye tutun ve tek seferde kontrollü verin.\n\n3 deneme yapılacak, en iyi skor kaydedilir.';
   }
 
   String _getCurrentTestName() {
@@ -319,90 +319,371 @@ class _BreathTestPageState extends State<BreathTestPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final currentSeconds = _isResting
+        ? _restSecondsLeft
+        : _stopwatch.elapsed.inSeconds;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(context.t('breathTest')),
+        elevation: 0,
       ),
-      body: Padding(
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              const SizedBox(height: 16),
+              // Progress Indicator - Visual dots showing test progress
+              _buildProgressIndicator(),
+              const SizedBox(height: 32),
+              
+              // Instruction Card with professional styling
+              _buildInstructionCard(context),
+              const SizedBox(height: 40),
+              
+              // Professional Timer Display
+              _buildTimerDisplay(currentSeconds),
+              const SizedBox(height: 24),
+              
+              // Previous Attempts Display
+              if (_attemptSeconds.isNotEmpty)
+                _buildAttemptsDisplay(),
+              
+              const SizedBox(height: 40),
+              
+              // Action Buttons
+              _buildActionButtons(context),
+              
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgressIndicator() {
+    return Column(
+      children: [
+        Text(
+          'Deneme Ilerlemesi',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[600],
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(3, (index) {
+            final testNumber = index + 1;
+            final isCompleted = testNumber < _currentTest;
+            final isCurrent = testNumber == _currentTest;
+            
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Column(
+                  children: [
+                    Container(
+                      height: 56,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isCompleted
+                            ? Colors.green
+                            : isCurrent
+                                ? Colors.blue
+                                : Colors.grey[300],
+                        boxShadow: isCurrent
+                            ? [
+                                BoxShadow(
+                                  color: Colors.blue.withOpacity(0.4),
+                                  blurRadius: 12,
+                                  spreadRadius: 2,
+                                )
+                              ]
+                            : [],
+                      ),
+                      child: Center(
+                        child: isCompleted
+                            ? Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 28,
+                              )
+                            : Text(
+                                testNumber.toString(),
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: isCurrent ? Colors.white : Colors.grey[600],
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_attemptSeconds.length >= testNumber ? _attemptSeconds[testNumber - 1] : '-'}s',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInstructionCard(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: Colors.blue[50],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: Colors.blue[100]!,
+          width: 1.5,
+        ),
+      ),
+      child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 24),
-            Text(
-              '${context.t('test')} $_currentTest / 3',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Icon(
+                  _isResting ? Icons.psychology : Icons.info,
+                  color: Colors.blue[700],
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  _isResting ? 'Dinlenme' : 'Talimatlar',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue[900],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              _getCurrentTestName(),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             Text(
               _getInstruction(),
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 18),
-            ),
-            const SizedBox(height: 40),
-            Text(
-              _isResting
-                  ? '$_restSecondsLeft'
-                  : '${_stopwatch.elapsed.inSeconds}',
-              style: const TextStyle(
-                fontSize: 64,
-                fontWeight: FontWeight.bold,
+              textAlign: TextAlign.left,
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.6,
+                color: Colors.grey[800],
               ),
             ),
-            const SizedBox(height: 8),
-            if (_attemptSeconds.isNotEmpty)
-              Text(
-                'Denemeler: ${_attemptSeconds.join('s | ')}s',
-                textAlign: TextAlign.center,
-              ),
-            const Spacer(),
-            if (!_isRunning && !_isResting)
-              SizedBox(
-                width: double.infinity,
-                height: 60,
-                child: ElevatedButton(
-                  onPressed: _startCurrentTest,
-                  child: Text(
-                    context.t('start'),
-                    style: TextStyle(fontSize: 20),
-                  ),
-                ),
-              )
-            else if (_isResting)
-              SizedBox(
-                width: double.infinity,
-                height: 60,
-                child: ElevatedButton(
-                  onPressed: null,
-                  child: Text(
-                    'Dinlenme: $_restSecondsLeft sn',
-                    style: const TextStyle(fontSize: 20),
-                  ),
-                ),
-              )
-            else
-              SizedBox(
-                width: double.infinity,
-                height: 60,
-                child: ElevatedButton(
-                  onPressed: _handleBreathPressed,
-                  child: Text(
-                    context.t('iBreathed'),
-                    style: TextStyle(fontSize: 20),
-                  ),
-                ),
-              ),
-            const SizedBox(height: 20),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildTimerDisplay(int seconds) {
+    final isResting = _isResting;
+    
+    return Column(
+      children: [
+        Text(
+          isResting ? 'KALAN SÜRESİ' : 'DAYANIKLILIK',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[600],
+            letterSpacing: 1.5,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+          decoration: BoxDecoration(
+            color: isResting ? Colors.orange[50] : Colors.blue[50],
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isResting ? Colors.orange[200]! : Colors.blue[200]!,
+              width: 2,
+            ),
+          ),
+          child: Column(
+            children: [
+              Text(
+                seconds.toString().padLeft(2, '0'),
+                style: TextStyle(
+                  fontSize: 96,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'monospace',
+                  color: isResting ? Colors.orange[700] : Colors.blue[700],
+                  letterSpacing: 4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                isResting ? 'Saniye' : 'Saniye',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAttemptsDisplay() {
+    return Card(
+      elevation: 0,
+      color: Colors.grey[50],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Önceki Denemeler',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[800],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: List.generate(_attemptSeconds.length, (index) {
+                return Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.grey[300]!,
+                    ),
+                  ),
+                  child: Text(
+                    'Deneme ${index + 1}: ${_attemptSeconds[index]}s',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButtons(BuildContext context) {
+    if (!_isRunning && !_isResting) {
+      return SizedBox(
+        width: double.infinity,
+        height: 56,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          onPressed: _startCurrentTest,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.play_arrow, size: 24),
+              const SizedBox(width: 12),
+              Text(
+                context.t('start').toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else if (_isResting) {
+      return SizedBox(
+        width: double.infinity,
+        height: 56,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.grey[400],
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          onPressed: null,
+          child: Text(
+            'Dinlenme - $_restSecondsLeft saniye kaldı',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    } else {
+      return SizedBox(
+        width: double.infinity,
+        height: 56,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          onPressed: _handleBreathPressed,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.check_circle, size: 24),
+              const SizedBox(width: 12),
+              Text(
+                context.t('iBreathed').toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 }
