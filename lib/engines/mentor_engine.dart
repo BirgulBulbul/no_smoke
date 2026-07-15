@@ -1,4 +1,8 @@
+import 'dart:math';
+
 class MentorEngine {
+	final Random _random = Random();
+
 	List<String> prioritizeTasks({
 		required List<String> tasks,
 		required int riskScore,
@@ -124,6 +128,91 @@ class MentorEngine {
 
 		final selected = unique.take(4).toList();
 		return _applyBurdenStyle(selected, burdenLevel);
+	}
+
+	List<String> buildDurationBarrierCommands({
+		required int riskScore,
+		required String? predictedWindow,
+		required List<String> riskyHours,
+		required int recentSuccessCount,
+		required int recentFailureCount,
+	}) {
+		final dayPart = _resolveDayPart(
+			predictedWindow: predictedWindow,
+			riskyHours: riskyHours,
+		);
+		final baseCount = riskScore >= 75
+			? 4
+			: riskScore >= 55
+			? 3
+			: 2;
+		final count = recentFailureCount > recentSuccessCount
+			? (baseCount + 1).clamp(2, 5)
+			: baseCount;
+
+		final minMax = _barrierMinuteRange(riskScore, dayPart);
+		final commands = <String>[];
+		for (var i = 0; i < count; i++) {
+			final minute = _pickUnpredictableMinute(
+				minMinutes: minMax.$1,
+				maxMinutes: minMax.$2,
+				existing: commands,
+			);
+			commands.add('SURE-BARIYERI: Sonraki $minute dakika sigara yok.');
+		}
+
+		if ((predictedWindow ?? '').isNotEmpty) {
+			commands.add(
+				'SURE-BARIYERI: ${predictedWindow!} penceresi oncesi en az ${minMax.$1} dakika sigara icme.',
+			);
+		}
+
+		return commands.take(5).toList();
+	}
+
+	(int, int) _barrierMinuteRange(int riskScore, String dayPart) {
+		var minMinutes = riskScore >= 75
+			? 25
+			: riskScore >= 55
+			? 18
+			: 12;
+		var maxMinutes = riskScore >= 75
+			? 120
+			: riskScore >= 55
+			? 90
+			: 60;
+
+		if (dayPart == 'evening' || dayPart == 'night') {
+			minMinutes += 8;
+			maxMinutes += 20;
+		}
+
+		return (minMinutes, maxMinutes);
+	}
+
+	int _pickUnpredictableMinute({
+		required int minMinutes,
+		required int maxMinutes,
+		required List<String> existing,
+	}) {
+		final used = existing
+			.map(
+				(c) => RegExp(r'(\d+)').firstMatch(c)?.group(1),
+			)
+			.whereType<String>()
+			.map((x) => int.tryParse(x) ?? -1)
+			.toSet();
+
+		var attempt = 0;
+		while (attempt < 20) {
+			attempt += 1;
+			final candidate = minMinutes + _random.nextInt((maxMinutes - minMinutes) + 1);
+			if (!used.contains(candidate)) {
+				return candidate;
+			}
+		}
+
+		return minMinutes + _random.nextInt((maxMinutes - minMinutes) + 1);
 	}
 
 	String _commandBurdenLevel(Map<String, dynamic>? weeklyPayload) {

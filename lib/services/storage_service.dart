@@ -879,6 +879,10 @@ class StorageService {
         coachCommands: (data['coachCommands'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),
+        durationBarrierCommands:
+            (data['durationBarrierCommands'] as List<dynamic>? ?? const [])
+                .map((item) => item.toString())
+                .toList(),
         commandSuccessScores:
             (data['commandSuccessScores'] as Map<String, dynamic>? ??
                     const <String, dynamic>{})
@@ -1416,6 +1420,13 @@ class StorageService {
       mode: commandMixMode,
       maxCount: adaptiveCommandCount,
     );
+    final durationBarrierCommands = _mentorEngine.buildDurationBarrierCommands(
+      riskScore: dynamicRisk,
+      predictedWindow: prediction['nextRiskWindow']?.toString(),
+      riskyHours: riskyHours,
+      recentSuccessCount: recentSuccessCount,
+      recentFailureCount: recentFailureCount,
+    );
 
     final riskExplanation = _behaviorEngine.buildRiskExplanation(
       baseRisk: baseRisk,
@@ -1436,6 +1447,7 @@ class StorageService {
       riskyHours: riskyHours,
       todaysTasks: orderedTasks,
       coachCommands: balancedCoachCommands,
+      durationBarrierCommands: durationBarrierCommands,
       commandSuccessScores: commandSuccessScores,
       commandCategoryScores: commandCategoryScores,
       commandMixMode: commandMixMode,
@@ -1456,6 +1468,7 @@ class StorageService {
       'progressSummary': dashboard.progressSummary,
       'todaysTasks': dashboard.todaysTasks,
       'coachCommands': dashboard.coachCommands,
+      'durationBarrierCommands': dashboard.durationBarrierCommands,
       'commandSuccessScores': dashboard.commandSuccessScores,
       'commandCategoryScores': dashboard.commandCategoryScores,
       'commandMixMode': dashboard.commandMixMode,

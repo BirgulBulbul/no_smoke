@@ -74,6 +74,7 @@ class _HomePageState extends State<HomePage> {
   List<String> _riskyHours = const [];
   List<String> _todaysTasks = const [];
   List<String> _coachCommands = const [];
+  List<String> _durationBarrierCommands = const [];
   Map<String, double> _commandSuccessScores = const {};
   Map<String, double> _commandCategoryScores = const {};
   String _commandMixMode = 'balanced';
@@ -522,6 +523,8 @@ class _HomePageState extends State<HomePage> {
       _progressSummaryText = behavior?.progressSummary ?? 'Stable';
       _todaysTasks = behavior?.todaysTasks ?? const [];
       _coachCommands = behavior?.coachCommands ?? const [];
+        _durationBarrierCommands =
+          behavior?.durationBarrierCommands ?? const [];
       _commandSuccessScores = behavior?.commandSuccessScores ?? const {};
       _commandCategoryScores = behavior?.commandCategoryScores ?? const {};
       _commandMixMode = behavior?.commandMixMode ?? 'balanced';
@@ -580,6 +583,7 @@ class _HomePageState extends State<HomePage> {
       }
       unawaited(_notifyNewTasks());
       unawaited(_scheduleCoachCommandNotificationsIfNeeded());
+      unawaited(_scheduleDurationBarrierNotificationsIfNeeded());
       unawaited(_presentMandatoryTaskIfNeeded());
     }
   }
@@ -785,6 +789,31 @@ class _HomePageState extends State<HomePage> {
       predictedRiskWindow: _predictedRiskWindow,
     );
     await _storageService.saveSetting('last_coach_command_signature', signature);
+  }
+
+  Future<void> _scheduleDurationBarrierNotificationsIfNeeded() async {
+    if (!_registrationCompleted || _durationBarrierCommands.isEmpty) {
+      return;
+    }
+
+    final now = DateTime.now();
+    final signature =
+        '${now.year}-${now.month}-${now.day}|BARRIER|${_durationBarrierCommands.join('|')}';
+    final existing = await _storageService.loadSetting(
+      'last_duration_barrier_signature',
+    );
+    if (existing == signature) {
+      return;
+    }
+
+    await NotificationService.scheduleCoachCommandNotifications(
+      commands: _durationBarrierCommands,
+      predictedRiskWindow: _predictedRiskWindow,
+    );
+    await _storageService.saveSetting(
+      'last_duration_barrier_signature',
+      signature,
+    );
   }
 
   Future<void> _completeCoachCommand(String command) async {
@@ -1646,6 +1675,39 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 6),
               ..._coachCommands.map(
+                (command) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('- $command'),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => _completeCoachCommand(command),
+                            child: const Text('Tamam'),
+                          ),
+                          TextButton(
+                            onPressed: () => _deferCoachCommand(command),
+                            child: const Text('Ertele 10 dk'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            if (_durationBarrierCommands.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Sure bariyerleri (ayri calisir)',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              ..._durationBarrierCommands.map(
                 (command) => Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Column(
