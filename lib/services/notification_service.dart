@@ -123,6 +123,15 @@ class NotificationService {
           AndroidFlutterLocalNotificationsPlugin
         >()
         ?.requestExactAlarmsPermission();
+    try {
+      final dynamic androidPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      await androidPlugin?.requestFullScreenIntentPermission();
+    } catch (_) {
+      // Full-screen intent permission may not be supported on all devices/APIs.
+    }
     await _plugin
         .resolvePlatformSpecificImplementation<
           IOSFlutterLocalNotificationsPlugin
@@ -164,6 +173,7 @@ class NotificationService {
 
   static Future<bool> ensureNotificationPermission() async {
     bool enabled = true;
+    bool fullScreenGranted = true;
 
     try {
       final androidPlugin = _plugin
@@ -198,7 +208,32 @@ class NotificationService {
       // Keep best-effort behavior on unsupported devices.
     }
 
-    return enabled;
+    try {
+      final dynamic androidPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      if (androidPlugin != null) {
+        final dynamic requested =
+            await androidPlugin.requestFullScreenIntentPermission();
+        if (requested is bool) {
+          fullScreenGranted = requested;
+        }
+
+        try {
+          final dynamic canUse = await androidPlugin.canUseFullScreenIntent();
+          if (canUse is bool) {
+            fullScreenGranted = fullScreenGranted && canUse;
+          }
+        } catch (_) {
+          // canUseFullScreenIntent may not exist depending on plugin/API level.
+        }
+      }
+    } catch (_) {
+      // Best-effort: fallback to current notification permission state.
+    }
+
+    return enabled && fullScreenGranted;
   }
 
   static Future<AndroidScheduleMode> _resolveAndroidScheduleMode() async {
@@ -471,7 +506,8 @@ class NotificationService {
           onlyAlertOnce: false,
           timeoutAfter: _notificationTimeoutMs,
           audioAttributesUsage: AudioAttributesUsage.alarm,
-          category: AndroidNotificationCategory.reminder,
+          category: AndroidNotificationCategory.call,
+          fullScreenIntent: true,
           actions: <AndroidNotificationAction>[
             AndroidNotificationAction(
               _actionTaskDone,
@@ -563,7 +599,8 @@ class NotificationService {
           onlyAlertOnce: false,
           timeoutAfter: _notificationTimeoutMs,
           audioAttributesUsage: AudioAttributesUsage.alarm,
-          category: AndroidNotificationCategory.reminder,
+          category: AndroidNotificationCategory.call,
+          fullScreenIntent: true,
           actions: <AndroidNotificationAction>[
             AndroidNotificationAction(
               _actionTaskDone,
@@ -906,7 +943,8 @@ class NotificationService {
             priority: Priority.high,
             playSound: true,
             audioAttributesUsage: AudioAttributesUsage.alarm,
-            category: AndroidNotificationCategory.reminder,
+            category: AndroidNotificationCategory.call,
+            fullScreenIntent: true,
             actions: <AndroidNotificationAction>[
               AndroidNotificationAction(
                 _actionTaskDone,

@@ -1294,7 +1294,9 @@ class _HomePageState extends State<HomePage> {
         if (!permissionGranted && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(context.t('notificationPermissionRequired')),
+              content: Text(
+                '${context.t('notificationPermissionRequired')} (tam ekran arama-benzeri bildirim izni gerekli)',
+              ),
             ),
           );
         }
