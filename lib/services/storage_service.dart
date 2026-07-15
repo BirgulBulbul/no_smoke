@@ -13,6 +13,8 @@ import '../models/sensor_usage_event.dart';
 import '../models/survey_record.dart';
 import '../models/task_history.dart';
 import '../models/user_profile_snapshot.dart';
+import '../engines/mentor_engine.dart';
+import '../engines/prediction_engine.dart';
 import 'behavior_engine.dart';
 
 class StorageService {
@@ -30,6 +32,8 @@ class StorageService {
   static const _isProfileCompletedKey = 'isProfileCompleted';
   static const _surveyTypes = {'initial', 'weekly'};
   final BehaviorEngine _behaviorEngine = BehaviorEngine();
+  final PredictionEngine _predictionEngine = PredictionEngine();
+  final MentorEngine _mentorEngine = MentorEngine();
   Database? _database;
 
   Future<Database> get database async {
@@ -1214,11 +1218,18 @@ class StorageService {
       ...baseTasks,
     }.toList();
 
-    final prediction = _behaviorEngine.predictNextRisk(
+    final prediction = _predictionEngine.predictNextRisk(
       riskyHours: riskyHours,
       riskyTriggers: riskyTriggers,
       riskScore: dynamicRisk,
       sensorEvents: sensorEvents,
+    );
+
+    final orderedTasks = _mentorEngine.prioritizeTasks(
+      tasks: todaysTasks,
+      riskScore: dynamicRisk,
+      primaryTrigger: riskyTriggers.isNotEmpty ? riskyTriggers.first : null,
+      predictedWindow: prediction['nextRiskWindow']?.toString(),
     );
 
     final dashboard = _behaviorEngine.buildDashboard(
@@ -1226,7 +1237,7 @@ class StorageService {
       records: records,
       riskyTriggers: riskyTriggers,
       riskyHours: riskyHours,
-      todaysTasks: todaysTasks,
+      todaysTasks: orderedTasks,
       prediction: prediction,
       plan: adaptivePlan,
     );
