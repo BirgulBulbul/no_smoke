@@ -68,6 +68,7 @@ class _HomePageState extends State<HomePage> {
   List<String> _riskyTriggers = const [];
   List<String> _riskyHours = const [];
   List<String> _todaysTasks = const [];
+  List<String> _coachCommands = const [];
   String _consecutiveSmokingLatestText = '...';
   String _consecutiveSmokingPreviousText = '...';
   String _consecutiveSmokingTrendText = '...';
@@ -504,6 +505,7 @@ class _HomePageState extends State<HomePage> {
       _breathTrendText = behavior?.breathTrend ?? 'Stable';
       _progressSummaryText = behavior?.progressSummary ?? 'Stable';
       _todaysTasks = behavior?.todaysTasks ?? const [];
+      _coachCommands = behavior?.coachCommands ?? const [];
       _predictedRiskWindow = behavior?.predictedRiskWindow ?? '...';
       _predictedTrigger = behavior?.predictedTrigger ?? '...';
       _predictionConfidence = behavior?.predictionConfidence ?? 0;
@@ -1336,6 +1338,20 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 6),
             Text('${context.t('weeklyRiskTarget')}: $_weeklyRiskTarget / 100'),
+            if (_coachCommands.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Kisisel komutlar',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              ..._coachCommands.map(
+                (command) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text('- $command'),
+                ),
+              ),
+            ],
             const SizedBox(height: 6),
             Text(
               '${context.t('goal180ProgressLabel')}: $_planCurrentDay / $_planTargetDays ${context.t('days')}',

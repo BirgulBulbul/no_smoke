@@ -371,6 +371,8 @@ class StorageService {
         'workStart': row['workStart'] as String?,
         'workEnd': row['workEnd'] as String?,
         'workplaceSmokingRule': row['workplaceSmokingRule'] as String?,
+        'firstCigaretteRange': row['firstCigaretteRange'] as String?,
+        'smokeFreeRange': row['smokeFreeRange'] as String?,
         'stressLevel': row['stressLevel'] as String?,
         'quitReason': row['quitReason'] as String?,
         'healthConditions': healthConditions,
@@ -836,6 +838,9 @@ class StorageService {
       todaysTasks: (data['todaysTasks'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),
+        coachCommands: (data['coachCommands'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
       predictedRiskWindow:
           data['predictedRiskWindow']?.toString() ?? '20:00-22:00',
       predictionConfidence:
@@ -1168,6 +1173,12 @@ class StorageService {
                   riskyTriggers: riskyTriggers,
                   riskyHours: riskyHours,
                 ) +
+                _behaviorEngine.calculatePersonalizedRiskAdjustment(
+                  surveyRecords: surveyRecords,
+                  breathRecords: breathRecords,
+                  latestContext: latestContext,
+                  sensorEvents: sensorEvents,
+                ) +
                 profileAdjustment +
                 _taskOutcomeRiskAdjustment(taskHistory))
             .clamp(0, 100);
@@ -1232,12 +1243,24 @@ class StorageService {
       predictedWindow: prediction['nextRiskWindow']?.toString(),
     );
 
+    final coachCommands = _mentorEngine.buildActionCommands(
+      riskScore: dynamicRisk,
+      breathTrend: breathTrend,
+      smokingTrend: smokingTrend,
+      consecutiveTrend: consecutiveTrend,
+      weeklyRiskTarget: adaptivePlan.weeklyRiskTarget,
+      riskyHours: riskyHours,
+      predictedWindow: prediction['nextRiskWindow']?.toString(),
+      predictedTrigger: prediction['nextRiskTrigger']?.toString(),
+    );
+
     final dashboard = _behaviorEngine.buildDashboard(
       riskScore: dynamicRisk,
       records: records,
       riskyTriggers: riskyTriggers,
       riskyHours: riskyHours,
       todaysTasks: orderedTasks,
+      coachCommands: coachCommands,
       prediction: prediction,
       plan: adaptivePlan,
     );
@@ -1249,6 +1272,7 @@ class StorageService {
       'breathTrend': dashboard.breathTrend,
       'progressSummary': dashboard.progressSummary,
       'todaysTasks': dashboard.todaysTasks,
+      'coachCommands': dashboard.coachCommands,
       'predictedRiskWindow': dashboard.predictedRiskWindow,
       'predictionConfidence': dashboard.predictionConfidence,
       'predictedTrigger': dashboard.predictedTrigger,

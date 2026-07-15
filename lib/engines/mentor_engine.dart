@@ -67,4 +67,54 @@ class MentorEngine {
 
 		return hints.take(3).toList();
 	}
+
+	List<String> buildActionCommands({
+		required int riskScore,
+		required String breathTrend,
+		required String smokingTrend,
+		required String consecutiveTrend,
+		required int weeklyRiskTarget,
+		required List<String> riskyHours,
+		required String? predictedWindow,
+		required String? predictedTrigger,
+	}) {
+		final commands = <String>[];
+
+		if (riskScore >= 80) {
+			commands.add('KOMUT 1: Ilk sigarayi en az 90 dakika ertele.');
+		} else if (riskScore >= 60) {
+			commands.add('KOMUT 1: Ilk sigarayi en az 45 dakika ertele.');
+		} else {
+			commands.add('KOMUT 1: Ilk sigarayi en az 25 dakika ertele.');
+		}
+
+		if (breathTrend == 'Declining') {
+			commands.add('KOMUT 2: Nefes testini bugun 2 kez yap ve ortalamayi kaydet.');
+		} else if (breathTrend == 'Improving') {
+			commands.add('KOMUT 2: Nefes kazancini koru, bugun en az 1 nefes rutini uygula.');
+		} else {
+			commands.add('KOMUT 2: Her kriz aninda 2 dakika nefes + 1 bardak su uygula.');
+		}
+
+		if (smokingTrend == 'Increasing' || consecutiveTrend == 'trendDeclining') {
+			commands.add('KOMUT 3: Bugun toplam sigara adedini dunun altinda tut.');
+		} else {
+			commands.add('KOMUT 3: Bugun secilen gorevlerin tamamina tamamlandi isareti ver.');
+		}
+
+		if ((predictedWindow ?? '').isNotEmpty) {
+			commands.add('HAZIRLIK: ${predictedWindow!} oncesi kriz kiti hazirla.');
+		}
+		if ((predictedTrigger ?? '').isNotEmpty) {
+			commands.add('TETIKLEYICI: ${predictedTrigger!} aninda sigara yerine alternatife gec.');
+		}
+		if (riskyHours.isNotEmpty) {
+			commands.add('ODAK: En riskli saat ${riskyHours.first} icin bildirimleri acik tut.');
+		}
+		if (weeklyRiskTarget > 0) {
+			commands.add('HEDEF: Haftalik risk hedefini $weeklyRiskTarget altina indir.');
+		}
+
+		return commands.take(4).toList();
+	}
 }

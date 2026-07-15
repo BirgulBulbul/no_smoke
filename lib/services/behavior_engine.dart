@@ -461,6 +461,24 @@ class BehaviorEngine {
     return score.clamp(0, 100);
   }
 
+  int calculatePersonalizedRiskAdjustment({
+    required List<SurveyRecord> surveyRecords,
+    required List<SurveyRecord> breathRecords,
+    required Map<String, dynamic>? latestContext,
+    required List<SensorUsageEvent> sensorEvents,
+  }) {
+    var adjustment = 0;
+
+    adjustment += _breathRiskAdjustmentFromRecords(breathRecords);
+    adjustment += _surveyDependencyAdjustment(
+      surveyRecords: surveyRecords,
+      latestContext: latestContext,
+    );
+    adjustment += _sensorPressureAdjustment(sensorEvents);
+
+    return adjustment.clamp(-20, 25);
+  }
+
   String chooseTaskDifficulty(int riskScore) {
     if (riskScore >= 70) {
       return 'easy';
@@ -656,6 +674,7 @@ class BehaviorEngine {
     required List<String> riskyTriggers,
     required List<String> riskyHours,
     required List<String> todaysTasks,
+    required List<String> coachCommands,
     required Map<String, dynamic> prediction,
     required AdaptivePlan plan,
   }) {
@@ -696,6 +715,7 @@ class BehaviorEngine {
       breathTrend: breathTrend,
       progressSummary: progressSummary,
       todaysTasks: todaysTasks,
+      coachCommands: coachCommands,
       predictedRiskWindow: prediction['nextRiskWindow'] as String,
       predictionConfidence: prediction['confidence'] as int,
       predictedTrigger: prediction['nextRiskTrigger'] as String,
@@ -1038,6 +1058,196 @@ class BehaviorEngine {
         .length;
     final activityRatio = activeCount / recent.length;
     return (activityRatio * 12).round();
+  }
+
+  int _breathRiskAdjustmentFromRecords(List<SurveyRecord> breathRecords) {
+    if (breathRecords.isEmpty) {
+      return 4;
+    }
+
+    final sorted = [...breathRecords]
+      ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
+    final latest = sorted.last;
+    final latestAverage =
+        ((latest.exhaleTestSeconds + latest.inhaleTestSeconds) / 2).toDouble();
+
+    var adjustment = 0;
+    if (latestAverage <= 4) {
+      adjustment += 10;
+    } else if (latestAverage <= 7) {
+      adjustment += 6;
+    } else if (latestAverage <= 10) {
+      adjustment += 2;
+    } else if (latestAverage <= 14) {
+      adjustment -= 2;
+    } else {
+      adjustment -= 5;
+    }
+
+    if (sorted.length >= 2) {
+      final previous = sorted[sorted.length - 2];
+      final previousAverage =
+          ((previous.exhaleTestSeconds + previous.inhaleTestSeconds) / 2)
+              .toDouble();
+      final delta = latestAverage - previousAverage;
+      if (delta >= 1.5) {
+        adjustment -= 4;
+      } else if (delta <= -1.5) {
+        adjustment += 5;
+      }
+    }
+
+    final recentAverages = sorted
+        .reversed
+        .take(5)
+        .map(
+          (item) =>
+              ((item.exhaleTestSeconds + item.inhaleTestSeconds) / 2).toDouble(),
+        )
+        .toList();
+    final variability = _stdDev(recentAverages);
+    if (variability > 2.5) {
+      adjustment += 4;
+    } else if (variability > 1.5) {
+      adjustment += 2;
+    } else if (variability < 0.8 && recentAverages.length >= 3) {
+      adjustment -= 2;
+    }
+
+    return adjustment;
+  }
+
+  int _surveyDependencyAdjustment({
+    required List<SurveyRecord> surveyRecords,
+    required Map<String, dynamic>? latestContext,
+  }) {
+    if (surveyRecords.isEmpty) {
+      return 0;
+    }
+
+    final sorted = [...surveyRecords]
+      ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
+    final latest = sorted.last;
+    final previous = sorted.length > 1 ? sorted[sorted.length - 2] : null;
+
+    var adjustment = 0;
+    final packDelta = _packLevel(latest.packsPerDay) -
+        (previous == null ? _packLevel(latest.packsPerDay) : _packLevel(previous.packsPerDay));
+    if (packDelta > 0) {
+      adjustment += min(packDelta * 4, 12);
+    } else if (packDelta < 0) {
+      adjustment -= min(packDelta.abs() * 3, 9);
+    }
+
+    final consecutiveScore = calculateConsecutiveSmokingScore(
+      habit: latest.consecutiveSmokingHabit,
+      count: latest.consecutiveSmokingCount,
+    );
+    adjustment += (consecutiveScore / 3).round();
+
+    final stressRaw = latestContext?['stressLevel']?.toString() ?? '';
+    final stress = _normalizeText(stressRaw).toLowerCase();
+    if (stress.contains('yuksek') || stress.contains('kotu')) {
+      adjustment += 6;
+    } else if (stress.contains('orta')) {
+      adjustment += 2;
+    } else if (stress.contains('iyi') || stress.contains('dusuk')) {
+      adjustment -= 2;
+    }
+
+    final firstCigaretteRange =
+        latestContext?['firstCigaretteRange']?.toString() ?? '';
+    final firstCigaretteMid = _rangeMidpoint(firstCigaretteRange);
+    if (firstCigaretteMid != null) {
+      if (firstCigaretteMid <= 5) {
+        adjustment += 7;
+      } else if (firstCigaretteMid <= 10) {
+        adjustment += 5;
+      } else if (firstCigaretteMid <= 30) {
+        adjustment += 2;
+      } else if (firstCigaretteMid >= 60) {
+        adjustment -= 3;
+      }
+    }
+
+    final smokeFreeRange = latestContext?['smokeFreeRange']?.toString() ?? '';
+    final smokeFreeMid = _rangeMidpoint(smokeFreeRange);
+    if (smokeFreeMid != null) {
+      if (smokeFreeMid <= 15) {
+        adjustment += 7;
+      } else if (smokeFreeMid <= 30) {
+        adjustment += 4;
+      } else if (smokeFreeMid <= 60) {
+        adjustment += 1;
+      } else if (smokeFreeMid >= 120) {
+        adjustment -= 4;
+      }
+    }
+
+    return adjustment;
+  }
+
+  int _sensorPressureAdjustment(List<SensorUsageEvent> sensorEvents) {
+    if (sensorEvents.isEmpty) {
+      return 0;
+    }
+
+    final recent = sensorEvents.length > 12
+        ? sensorEvents.sublist(sensorEvents.length - 12)
+        : sensorEvents;
+    final highPressureCount = recent
+        .where(
+          (event) =>
+              event.screenUnlockCount >= 12 ||
+              event.appUsageMinutes >= 40 ||
+              event.activityState == 'driving',
+        )
+        .length;
+    final ratio = highPressureCount / recent.length;
+    if (ratio >= 0.6) {
+      return 6;
+    }
+    if (ratio >= 0.35) {
+      return 3;
+    }
+    return 0;
+  }
+
+  double _stdDev(List<double> values) {
+    if (values.length < 2) {
+      return 0;
+    }
+
+    final mean = values.reduce((a, b) => a + b) / values.length;
+    final variance = values
+            .map((value) => pow(value - mean, 2).toDouble())
+            .reduce((a, b) => a + b) /
+        values.length;
+    return sqrt(variance);
+  }
+
+  int? _rangeMidpoint(String rawRange) {
+    final value = rawRange.trim();
+    if (value.isEmpty || value == 'unknown') {
+      return null;
+    }
+
+    if (value.endsWith('+')) {
+      final start = int.tryParse(value.substring(0, value.length - 1));
+      return start == null ? null : start + 30;
+    }
+
+    final parts = value.split('-');
+    if (parts.length != 2) {
+      return null;
+    }
+
+    final low = int.tryParse(parts[0]);
+    final high = int.tryParse(parts[1]);
+    if (low == null || high == null) {
+      return null;
+    }
+    return ((low + high) / 2).round();
   }
 
   bool _hasShortSleepWindow({
