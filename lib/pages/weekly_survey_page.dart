@@ -27,6 +27,8 @@ class WeeklySurveyPage extends StatefulWidget {
 class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
   final StorageService _storageService = StorageService();
   final TextEditingController _noteController = TextEditingController();
+  bool _detailedMode = false;
+  bool _autoDetailedByRisk = false;
   String _mood = 'Orta';
   String _packOption = '1 paketten az';
   String? _highPackOption;
@@ -71,10 +73,37 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
     return _packOption;
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _prepareModeFromRecentRisk();
+  }
+
+  Future<void> _prepareModeFromRecentRisk() async {
+    final records = await _storageService.loadSurveyHistory();
+    SurveyRecord? latestWeekly;
+    for (final record in records.reversed) {
+      if (record.type == 'weekly') {
+        latestWeekly = record;
+        break;
+      }
+    }
+
+    final recentRisk = latestWeekly?.riskScore ?? 0;
+    if (recentRisk >= 60 && mounted) {
+      setState(() {
+        _autoDetailedByRisk = true;
+        _detailedMode = true;
+      });
+    }
+  }
+
   Future<void> _saveWeeklySurvey() async {
     final now = DateTime.now();
     final recordId = now.millisecondsSinceEpoch.toString();
-    final weeklyPayload = _buildWeeklyPayload();
+    final weeklyPayload = _detailedMode
+        ? _buildWeeklyPayload()
+        : _buildQuickWeeklyPayload();
     final weeklyRiskScore = _calculateWeeklyRiskScore(weeklyPayload);
     final weeklyRiskLevel = _levelFromScore(weeklyRiskScore);
     final record = SurveyRecord(
@@ -163,6 +192,108 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         'mostHelpfulCategory': 'breath',
       },
     };
+  }
+
+  Map<String, dynamic> _buildQuickWeeklyPayload() {
+    final moodLower = _mood.toLowerCase();
+    final isGood = moodLower == 'iyi';
+    final isBad = moodLower == 'kötü' || moodLower == 'kotu';
+    final packAvg = _estimatedDailyCigarettes(_resolvedPacksPerDay);
+    final lapseFromConsecutive = _consecutiveSmokingHabit == 'Evet'
+        ? int.tryParse(_consecutiveSmokingCount ?? '1') ?? 1
+        : 0;
+
+    final motivation = isGood
+        ? 8
+        : isBad
+        ? 4
+        : 6;
+    final selfEfficacy = isGood
+        ? 8
+        : isBad
+        ? 4
+        : 6;
+    final stressTriggerDays = isGood
+        ? 2
+        : isBad
+        ? 6
+        : 4;
+    final cravingAvg = isGood
+        ? 3
+        : isBad
+        ? 7
+        : 5;
+    final completion = isGood
+        ? 8
+        : isBad
+        ? 4
+        : 6;
+
+    return {
+      'avgCigarettesPerDay': packAvg,
+      'deltaVsLastWeek': isBad
+          ? 'increased'
+          : isGood
+          ? 'decreased'
+          : 'same',
+      'lapseCount': lapseFromConsecutive,
+      'cravingAvg': cravingAvg,
+      'cravingMax': (cravingAvg + 2).clamp(0, 10),
+      'withdrawal': {
+        'irritability': isBad ? 2 : 1,
+        'anxiety': isBad ? 2 : 1,
+        'sleepProblem': isBad ? 2 : 1,
+        'concentrationProblem': isBad ? 2 : 1,
+        'appetiteIncrease': isBad ? 2 : 1,
+      },
+      'triggerExposureDays': {
+        'coffee': 3,
+        'meal': 3,
+        'driving': 2,
+        'stress': stressTriggerDays,
+        'phone': 3,
+        'social': 3,
+        'alcohol': isBad ? 2 : 1,
+      },
+      'alcoholDays': isBad ? 2 : 1,
+      'socialSmokingContextDays': isBad ? 4 : 2,
+      'treatment': {
+        'medicationUse': 'regular',
+        'sideEffects': false,
+        'adherence': isBad ? 5 : 7,
+      },
+      'support': {
+        'usedCounselingOrQuitline': false,
+        'familySupport': isBad ? 5 : 7,
+      },
+      'selfEfficacy': selfEfficacy,
+      'motivation': motivation,
+      'task': {
+        'weeklyCompletionRate': completion,
+        'mostHelpfulCategory': 'breath',
+      },
+    };
+  }
+
+  int _estimatedDailyCigarettes(String packOption) {
+    switch (packOption) {
+      case '1 paketten az':
+        return 8;
+      case '1 paket':
+        return 20;
+      case '1.5 paket':
+        return 30;
+      case '2 paket':
+        return 40;
+      case '3 paket':
+        return 60;
+      case '4 paket':
+        return 80;
+      case '5+ paket':
+        return 100;
+      default:
+        return 12;
+    }
   }
 
   int _calculateWeeklyRiskScore(Map<String, dynamic> payload) {
@@ -291,6 +422,54 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
     );
   }
 
+  Widget _buildSurveyModeCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Anket modu',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('Hizli (15 sn)'),
+                  selected: !_detailedMode,
+                  onSelected: (_) {
+                    setState(() {
+                      _detailedMode = false;
+                    });
+                  },
+                ),
+                ChoiceChip(
+                  label: const Text('Detayli'),
+                  selected: _detailedMode,
+                  onSelected: (_) {
+                    setState(() {
+                      _detailedMode = true;
+                    });
+                  },
+                ),
+              ],
+            ),
+            if (_autoDetailedByRisk) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Gecen hafta risk yuksek oldugu icin Detayli mod otomatik acildi.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<String> _resolveLatestUserName() async {
     final records = await _storageService.loadSurveyHistory();
     for (final record in records.reversed) {
@@ -323,6 +502,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
+            _buildSurveyModeCard(),
+            const SizedBox(height: 12),
             PacksPerDaySection(
               selectedPackOption: _packOption,
               selectedHighPackOption: _highPackOption,
@@ -360,218 +541,230 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
                 });
               },
             ),
-            const SizedBox(height: 12),
-            _intSlider(
-              label: 'Ortalama gunluk sigara',
-              value: _avgCigarettesPerDay,
-              min: 0,
-              max: 40,
-              onChanged: (v) => setState(() => _avgCigarettesPerDay = v),
-            ),
-            DropdownButtonFormField<String>(
-              initialValue: _deltaVsLastWeek,
-              decoration: const InputDecoration(
-                labelText: 'Gecen haftaya gore',
-                border: OutlineInputBorder(),
+            if (_detailedMode) ...[
+              const SizedBox(height: 12),
+              _intSlider(
+                label: 'Ortalama gunluk sigara',
+                value: _avgCigarettesPerDay,
+                min: 0,
+                max: 40,
+                onChanged: (v) => setState(() => _avgCigarettesPerDay = v),
               ),
-              items: const [
-                DropdownMenuItem(value: 'decreased', child: Text('Azaldi')),
-                DropdownMenuItem(value: 'same', child: Text('Ayni')),
-                DropdownMenuItem(value: 'increased', child: Text('Artti')),
-              ],
-              onChanged: (value) =>
-                  setState(() => _deltaVsLastWeek = value ?? 'same'),
-            ),
-            const SizedBox(height: 12),
-            _intSlider(
-              label: 'Kayma sayisi (lapse)',
-              value: _lapseCount,
-              min: 0,
-              max: 10,
-              onChanged: (v) => setState(() => _lapseCount = v),
-            ),
-            _intSlider(
-              label: 'Craving ortalama (0-10)',
-              value: _cravingAvg,
-              min: 0,
-              max: 10,
-              onChanged: (v) => setState(() => _cravingAvg = v),
-            ),
-            _intSlider(
-              label: 'Craving maksimum (0-10)',
-              value: _cravingMax,
-              min: 0,
-              max: 10,
-              onChanged: (v) => setState(() => _cravingMax = v),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Yoksunluk belirtileri (0-3)',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-            _intSlider(
-              label: 'Sinirlilik',
-              value: _withdrawIrritability,
-              min: 0,
-              max: 3,
-              onChanged: (v) => setState(() => _withdrawIrritability = v),
-            ),
-            _intSlider(
-              label: 'Anksiyete',
-              value: _withdrawAnxiety,
-              min: 0,
-              max: 3,
-              onChanged: (v) => setState(() => _withdrawAnxiety = v),
-            ),
-            _intSlider(
-              label: 'Uyku problemi',
-              value: _withdrawSleep,
-              min: 0,
-              max: 3,
-              onChanged: (v) => setState(() => _withdrawSleep = v),
-            ),
-            _intSlider(
-              label: 'Konsantrasyon problemi',
-              value: _withdrawConcentration,
-              min: 0,
-              max: 3,
-              onChanged: (v) => setState(() => _withdrawConcentration = v),
-            ),
-            _intSlider(
-              label: 'Istah artisi',
-              value: _withdrawAppetite,
-              min: 0,
-              max: 3,
-              onChanged: (v) => setState(() => _withdrawAppetite = v),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Tetikleyici maruziyeti (gun/saat 0-7)',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-            _intSlider(
-              label: 'Kahve',
-              value: _triggerCoffeeDays,
-              min: 0,
-              max: 7,
-              onChanged: (v) => setState(() => _triggerCoffeeDays = v),
-            ),
-            _intSlider(
-              label: 'Yemek sonrasi',
-              value: _triggerMealDays,
-              min: 0,
-              max: 7,
-              onChanged: (v) => setState(() => _triggerMealDays = v),
-            ),
-            _intSlider(
-              label: 'Arac kullanimi',
-              value: _triggerDrivingDays,
-              min: 0,
-              max: 7,
-              onChanged: (v) => setState(() => _triggerDrivingDays = v),
-            ),
-            _intSlider(
-              label: 'Stres',
-              value: _triggerStressDays,
-              min: 0,
-              max: 7,
-              onChanged: (v) => setState(() => _triggerStressDays = v),
-            ),
-            _intSlider(
-              label: 'Telefon',
-              value: _triggerPhoneDays,
-              min: 0,
-              max: 7,
-              onChanged: (v) => setState(() => _triggerPhoneDays = v),
-            ),
-            _intSlider(
-              label: 'Sosyal ortam',
-              value: _triggerSocialDays,
-              min: 0,
-              max: 7,
-              onChanged: (v) => setState(() => _triggerSocialDays = v),
-            ),
-            _intSlider(
-              label: 'Alkol tetigi',
-              value: _triggerAlcoholDays,
-              min: 0,
-              max: 7,
-              onChanged: (v) => setState(() => _triggerAlcoholDays = v),
-            ),
-            _intSlider(
-              label: 'Alkol kullanilan gun',
-              value: _alcoholDays,
-              min: 0,
-              max: 7,
-              onChanged: (v) => setState(() => _alcoholDays = v),
-            ),
-            _intSlider(
-              label: 'Sigarali sosyal ortam gunu',
-              value: _socialSmokingContextDays,
-              min: 0,
-              max: 7,
-              onChanged: (v) => setState(() => _socialSmokingContextDays = v),
-            ),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: _medicationUse,
-              decoration: const InputDecoration(
-                labelText: 'Tedavi/NRT kullanimi',
-                border: OutlineInputBorder(),
+              DropdownButtonFormField<String>(
+                initialValue: _deltaVsLastWeek,
+                decoration: const InputDecoration(
+                  labelText: 'Gecen haftaya gore',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'decreased', child: Text('Azaldi')),
+                  DropdownMenuItem(value: 'same', child: Text('Ayni')),
+                  DropdownMenuItem(value: 'increased', child: Text('Artti')),
+                ],
+                onChanged: (value) =>
+                    setState(() => _deltaVsLastWeek = value ?? 'same'),
               ),
-              items: const [
-                DropdownMenuItem(value: 'none', child: Text('Yok')),
-                DropdownMenuItem(value: 'irregular', child: Text('Duzenli degil')),
-                DropdownMenuItem(value: 'regular', child: Text('Duzenli')),
-              ],
-              onChanged: (value) =>
-                  setState(() => _medicationUse = value ?? 'regular'),
-            ),
-            SwitchListTile(
-              title: const Text('Ilac/NRT yan etkisi yasandi'),
-              value: _sideEffects,
-              onChanged: (v) => setState(() => _sideEffects = v),
-            ),
-            SwitchListTile(
-              title: const Text('Danismanlik/quitline kullanildi'),
-              value: _usedCounselingOrQuitline,
-              onChanged: (v) => setState(() => _usedCounselingOrQuitline = v),
-            ),
-            _intSlider(
-              label: 'Tedavi uyumu (0-10)',
-              value: _medicationAdherence,
-              min: 0,
-              max: 10,
-              onChanged: (v) => setState(() => _medicationAdherence = v),
-            ),
-            _intSlider(
-              label: 'Aile/sosyal destek (0-10)',
-              value: _familySupport,
-              min: 0,
-              max: 10,
-              onChanged: (v) => setState(() => _familySupport = v),
-            ),
-            _intSlider(
-              label: 'Oz yeterlilik (0-10)',
-              value: _selfEfficacy,
-              min: 0,
-              max: 10,
-              onChanged: (v) => setState(() => _selfEfficacy = v),
-            ),
-            _intSlider(
-              label: 'Motivasyon (0-10)',
-              value: _motivation,
-              min: 0,
-              max: 10,
-              onChanged: (v) => setState(() => _motivation = v),
-            ),
-            _intSlider(
-              label: 'Haftalik gorev tamamlama (0-10)',
-              value: _weeklyCompletionRate,
-              min: 0,
-              max: 10,
-              onChanged: (v) => setState(() => _weeklyCompletionRate = v),
-            ),
+              const SizedBox(height: 12),
+              _intSlider(
+                label: 'Kayma sayisi (lapse)',
+                value: _lapseCount,
+                min: 0,
+                max: 10,
+                onChanged: (v) => setState(() => _lapseCount = v),
+              ),
+              _intSlider(
+                label: 'Craving ortalama (0-10)',
+                value: _cravingAvg,
+                min: 0,
+                max: 10,
+                onChanged: (v) => setState(() => _cravingAvg = v),
+              ),
+              _intSlider(
+                label: 'Craving maksimum (0-10)',
+                value: _cravingMax,
+                min: 0,
+                max: 10,
+                onChanged: (v) => setState(() => _cravingMax = v),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Yoksunluk belirtileri (0-3)',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              _intSlider(
+                label: 'Sinirlilik',
+                value: _withdrawIrritability,
+                min: 0,
+                max: 3,
+                onChanged: (v) => setState(() => _withdrawIrritability = v),
+              ),
+              _intSlider(
+                label: 'Anksiyete',
+                value: _withdrawAnxiety,
+                min: 0,
+                max: 3,
+                onChanged: (v) => setState(() => _withdrawAnxiety = v),
+              ),
+              _intSlider(
+                label: 'Uyku problemi',
+                value: _withdrawSleep,
+                min: 0,
+                max: 3,
+                onChanged: (v) => setState(() => _withdrawSleep = v),
+              ),
+              _intSlider(
+                label: 'Konsantrasyon problemi',
+                value: _withdrawConcentration,
+                min: 0,
+                max: 3,
+                onChanged: (v) => setState(() => _withdrawConcentration = v),
+              ),
+              _intSlider(
+                label: 'Istah artisi',
+                value: _withdrawAppetite,
+                min: 0,
+                max: 3,
+                onChanged: (v) => setState(() => _withdrawAppetite = v),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Tetikleyici maruziyeti (gun/saat 0-7)',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              _intSlider(
+                label: 'Kahve',
+                value: _triggerCoffeeDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) => setState(() => _triggerCoffeeDays = v),
+              ),
+              _intSlider(
+                label: 'Yemek sonrasi',
+                value: _triggerMealDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) => setState(() => _triggerMealDays = v),
+              ),
+              _intSlider(
+                label: 'Arac kullanimi',
+                value: _triggerDrivingDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) => setState(() => _triggerDrivingDays = v),
+              ),
+              _intSlider(
+                label: 'Stres',
+                value: _triggerStressDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) => setState(() => _triggerStressDays = v),
+              ),
+              _intSlider(
+                label: 'Telefon',
+                value: _triggerPhoneDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) => setState(() => _triggerPhoneDays = v),
+              ),
+              _intSlider(
+                label: 'Sosyal ortam',
+                value: _triggerSocialDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) => setState(() => _triggerSocialDays = v),
+              ),
+              _intSlider(
+                label: 'Alkol tetigi',
+                value: _triggerAlcoholDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) => setState(() => _triggerAlcoholDays = v),
+              ),
+              _intSlider(
+                label: 'Alkol kullanilan gun',
+                value: _alcoholDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) => setState(() => _alcoholDays = v),
+              ),
+              _intSlider(
+                label: 'Sigarali sosyal ortam gunu',
+                value: _socialSmokingContextDays,
+                min: 0,
+                max: 7,
+                onChanged: (v) =>
+                    setState(() => _socialSmokingContextDays = v),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _medicationUse,
+                decoration: const InputDecoration(
+                  labelText: 'Tedavi/NRT kullanimi',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'none', child: Text('Yok')),
+                  DropdownMenuItem(
+                    value: 'irregular',
+                    child: Text('Duzenli degil'),
+                  ),
+                  DropdownMenuItem(value: 'regular', child: Text('Duzenli')),
+                ],
+                onChanged: (value) =>
+                    setState(() => _medicationUse = value ?? 'regular'),
+              ),
+              SwitchListTile(
+                title: const Text('Ilac/NRT yan etkisi yasandi'),
+                value: _sideEffects,
+                onChanged: (v) => setState(() => _sideEffects = v),
+              ),
+              SwitchListTile(
+                title: const Text('Danismanlik/quitline kullanildi'),
+                value: _usedCounselingOrQuitline,
+                onChanged: (v) =>
+                    setState(() => _usedCounselingOrQuitline = v),
+              ),
+              _intSlider(
+                label: 'Tedavi uyumu (0-10)',
+                value: _medicationAdherence,
+                min: 0,
+                max: 10,
+                onChanged: (v) => setState(() => _medicationAdherence = v),
+              ),
+              _intSlider(
+                label: 'Aile/sosyal destek (0-10)',
+                value: _familySupport,
+                min: 0,
+                max: 10,
+                onChanged: (v) => setState(() => _familySupport = v),
+              ),
+              _intSlider(
+                label: 'Oz yeterlilik (0-10)',
+                value: _selfEfficacy,
+                min: 0,
+                max: 10,
+                onChanged: (v) => setState(() => _selfEfficacy = v),
+              ),
+              _intSlider(
+                label: 'Motivasyon (0-10)',
+                value: _motivation,
+                min: 0,
+                max: 10,
+                onChanged: (v) => setState(() => _motivation = v),
+              ),
+              _intSlider(
+                label: 'Haftalik gorev tamamlama (0-10)',
+                value: _weeklyCompletionRate,
+                min: 0,
+                max: 10,
+                onChanged: (v) => setState(() => _weeklyCompletionRate = v),
+              ),
+            ] else ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Hizli mod secili. Temel sorulara gore risk otomatik hesaplanir. Istersen Detayli moda gecip tum parametreleri duzenleyebilirsin.',
+              ),
+            ],
             ConsecutiveSmokingSection(
               consecutiveSmokingHabit: _consecutiveSmokingHabit,
               consecutiveSmokingCount: _consecutiveSmokingCount,
@@ -615,9 +808,17 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
                       MaterialPageRoute(
                         builder: (_) => HomePage(
                           name: widget.nameSeed ?? latestUserName,
-                          riskScore: _calculateWeeklyRiskScore(_buildWeeklyPayload()),
+                          riskScore: _calculateWeeklyRiskScore(
+                            _detailedMode
+                                ? _buildWeeklyPayload()
+                                : _buildQuickWeeklyPayload(),
+                          ),
                           riskLevel: _levelFromScore(
-                            _calculateWeeklyRiskScore(_buildWeeklyPayload()),
+                            _calculateWeeklyRiskScore(
+                              _detailedMode
+                                  ? _buildWeeklyPayload()
+                                  : _buildQuickWeeklyPayload(),
+                            ),
                           ),
                         ),
                       ),
