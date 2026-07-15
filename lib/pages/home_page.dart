@@ -831,6 +831,69 @@ class _HomePageState extends State<HomePage> {
     await _loadHomeMetrics();
   }
 
+  Future<void> _completeDurationBarrier(String command) async {
+    final minutes = _extractDurationBarrierMinutes(command);
+    if (!mounted) {
+      return;
+    }
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final prompt = minutes == null
+            ? 'Sure bariyeri tamamlandi. Basarili oldun mu?'
+            : '$minutes dakikalik sure bariyeri bitti. Basarili oldun mu?';
+        return AlertDialog(
+          title: const Text('Sure bariyeri degerlendirme'),
+          content: Text(prompt),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Basarisiz'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Basarili'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == null) {
+      return;
+    }
+
+    await _storageService.saveTaskResult(
+      taskTitle: command,
+      taskResult: result ? 'barrier_success' : 'barrier_failure',
+      completedAt: DateTime.now(),
+    );
+    if (!result) {
+      await _storageService.saveProtocolViolation(
+        type: 'duration_barrier_failure',
+        severity: 'medium',
+        source: 'app_flow',
+        taskTitle: command,
+        details: 'User marked duration barrier as failed after timer end.',
+      );
+    }
+
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result
+              ? 'Sure bariyeri basarili kaydedildi. Sonraki bariyerler buna gore ayarlanacak.'
+              : 'Sure bariyeri basarisiz kaydedildi. Sonraki bariyerler uyuma gore guncellenecek.',
+        ),
+      ),
+    );
+    await _loadHomeMetrics();
+  }
+
   Future<void> _deferCoachCommand(String command) async {
     await _storageService.saveTaskResult(
       taskTitle: command,
@@ -848,6 +911,34 @@ class _HomePageState extends State<HomePage> {
       const SnackBar(content: Text('Komut 10 dakika ertelendi.')),
     );
     await _loadHomeMetrics();
+  }
+
+  Future<void> _deferDurationBarrier(String command) async {
+    await _storageService.saveTaskResult(
+      taskTitle: command,
+      taskResult: 'barrier_deferred',
+      completedAt: DateTime.now(),
+    );
+    await NotificationService.scheduleFirstTaskTriggerNotification(
+      taskDescription: command,
+      delay: const Duration(minutes: 10),
+    );
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sure bariyeri 10 dakika ertelendi.')),
+    );
+    await _loadHomeMetrics();
+  }
+
+  int? _extractDurationBarrierMinutes(String command) {
+    final match = RegExp(r'Sonraki\s+(\d+)\s+dakika', caseSensitive: false)
+        .firstMatch(command);
+    if (match == null) {
+      return null;
+    }
+    return int.tryParse(match.group(1) ?? '');
   }
 
   Future<void> _presentMandatoryTaskIfNeeded() async {
@@ -1686,11 +1777,11 @@ class _HomePageState extends State<HomePage> {
                         spacing: 8,
                         children: [
                           OutlinedButton(
-                            onPressed: () => _completeCoachCommand(command),
+                            onPressed: () => _completeDurationBarrier(command),
                             child: const Text('Tamam'),
                           ),
                           TextButton(
-                            onPressed: () => _deferCoachCommand(command),
+                            onPressed: () => _deferDurationBarrier(command),
                             child: const Text('Ertele 10 dk'),
                           ),
                         ],

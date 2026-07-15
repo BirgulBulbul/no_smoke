@@ -136,6 +136,9 @@ class MentorEngine {
 		required List<String> riskyHours,
 		required int recentSuccessCount,
 		required int recentFailureCount,
+		required double barrierSuccessRate,
+		required int recentBarrierSuccessCount,
+		required int recentBarrierFailureCount,
 	}) {
 		final dayPart = _resolveDayPart(
 			predictedWindow: predictedWindow,
@@ -146,11 +149,41 @@ class MentorEngine {
 			: riskScore >= 55
 			? 3
 			: 2;
-		final count = recentFailureCount > recentSuccessCount
+		var count = recentFailureCount > recentSuccessCount
 			? (baseCount + 1).clamp(2, 5)
 			: baseCount;
 
-		final minMax = _barrierMinuteRange(riskScore, dayPart);
+		var minMax = _barrierMinuteRange(riskScore, dayPart);
+		var minMinutes = minMax.$1;
+		var maxMinutes = minMax.$2;
+
+		if (barrierSuccessRate >= 0.7) {
+			minMinutes += 8;
+			maxMinutes += 25;
+			count = (count - 1).clamp(1, 5);
+		} else if (barrierSuccessRate <= 0.4) {
+			minMinutes -= 4;
+			maxMinutes -= 12;
+			count = (count + 1).clamp(2, 5);
+		}
+
+		if (recentBarrierFailureCount > recentBarrierSuccessCount) {
+			minMinutes -= 3;
+			count = (count + 1).clamp(2, 5);
+		} else if (recentBarrierSuccessCount >= recentBarrierFailureCount + 2) {
+			minMinutes += 4;
+			maxMinutes += 10;
+			count = (count - 1).clamp(1, 5);
+		}
+
+		if (minMinutes < 8) {
+			minMinutes = 8;
+		}
+		if (maxMinutes < minMinutes + 15) {
+			maxMinutes = minMinutes + 15;
+		}
+		minMax = (minMinutes, maxMinutes);
+
 		final commands = <String>[];
 		for (var i = 0; i < count; i++) {
 			final minute = _pickUnpredictableMinute(

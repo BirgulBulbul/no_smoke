@@ -1321,6 +1321,23 @@ class StorageService {
     final taskOutcomeSummary = await loadTaskOutcomeSummary();
     final recentSuccessCount = taskOutcomeSummary['recentSuccessCount'] ?? 0;
     final recentFailureCount = taskOutcomeSummary['recentFailureCount'] ?? 0;
+    final barrierOutcomeSummary = _summarizeDurationBarrierOutcomes(taskHistory);
+    final recentBarrierSuccessCount =
+      barrierOutcomeSummary['recentSuccessCount'] ?? 0;
+    final recentBarrierFailureCount =
+      barrierOutcomeSummary['recentFailureCount'] ?? 0;
+    final totalBarrierOutcomes =
+      (barrierOutcomeSummary['successCount'] ?? 0) +
+      (barrierOutcomeSummary['failureCount'] ?? 0);
+    final barrierSuccessRate = totalBarrierOutcomes == 0
+      ? 0.5
+      : (barrierOutcomeSummary['successCount'] ?? 0) / totalBarrierOutcomes;
+
+    if (recentBarrierFailureCount >= recentBarrierSuccessCount + 2) {
+      dynamicRisk = (dynamicRisk + 6).clamp(0, 100).toInt();
+    } else if (recentBarrierSuccessCount >= recentBarrierFailureCount + 2) {
+      dynamicRisk = (dynamicRisk - 4).clamp(0, 100).toInt();
+    }
 
     final startDate = surveyRecords.isNotEmpty
         ? surveyRecords.first.completedAt
@@ -1426,6 +1443,9 @@ class StorageService {
       riskyHours: riskyHours,
       recentSuccessCount: recentSuccessCount,
       recentFailureCount: recentFailureCount,
+      barrierSuccessRate: barrierSuccessRate,
+      recentBarrierSuccessCount: recentBarrierSuccessCount,
+      recentBarrierFailureCount: recentBarrierFailureCount,
     );
 
     final riskExplanation = _behaviorEngine.buildRiskExplanation(
@@ -1439,6 +1459,9 @@ class StorageService {
     riskExplanation.add('Haftalik anket skoru: $weeklyRiskScore ($weeklyRiskLevel)');
     riskExplanation.add('Komut dengeleme modu: $commandMixMode');
     riskExplanation.add('Gunluk komut adedi: $adaptiveCommandCount');
+    riskExplanation.add(
+      'Sure bariyeri uyumu: %${(barrierSuccessRate * 100).round()} (son: $recentBarrierSuccessCount basarili / $recentBarrierFailureCount basarisiz)',
+    );
 
     final dashboard = _behaviorEngine.buildDashboard(
       riskScore: dynamicRisk,
@@ -1576,6 +1599,48 @@ class StorageService {
       return 5;
     }
     return count;
+  }
+
+  Map<String, int> _summarizeDurationBarrierOutcomes(
+    List<TaskHistory> taskHistory,
+  ) {
+    final barriers = taskHistory
+        .where(
+          (item) =>
+              item.taskTitle.toUpperCase().contains('SURE-BARIYERI') ||
+              item.taskTitle.toLowerCase().contains('sure bariyeri'),
+        )
+        .toList();
+
+    var successCount = 0;
+    var failureCount = 0;
+    for (final item in barriers) {
+      if (item.completed) {
+        successCount += 1;
+      } else {
+        failureCount += 1;
+      }
+    }
+
+    final recent = barriers.length > 8
+        ? barriers.sublist(barriers.length - 8)
+        : barriers;
+    var recentSuccessCount = 0;
+    var recentFailureCount = 0;
+    for (final item in recent) {
+      if (item.completed) {
+        recentSuccessCount += 1;
+      } else {
+        recentFailureCount += 1;
+      }
+    }
+
+    return {
+      'successCount': successCount,
+      'failureCount': failureCount,
+      'recentSuccessCount': recentSuccessCount,
+      'recentFailureCount': recentFailureCount,
+    };
   }
 
   bool _isWithinWindow({
