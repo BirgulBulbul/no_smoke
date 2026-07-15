@@ -77,36 +77,35 @@ class MentorEngine {
 		required List<String> riskyHours,
 		required String? predictedWindow,
 		required String? predictedTrigger,
+		required Map<String, dynamic>? weeklyPayload,
 	}) {
 		final commands = <String>[];
+		final dayPart = _resolveDayPart(predictedWindow: predictedWindow, riskyHours: riskyHours);
+		final riskBand = _riskBand(riskScore);
 
-		if (riskScore >= 80) {
-			commands.add('KOMUT 1: Ilk sigarayi en az 90 dakika ertele.');
-		} else if (riskScore >= 60) {
-			commands.add('KOMUT 1: Ilk sigarayi en az 45 dakika ertele.');
-		} else {
-			commands.add('KOMUT 1: Ilk sigarayi en az 25 dakika ertele.');
-		}
+		commands.add('KADEMELI: ${_progressiveReductionCommand(riskScore)}');
+		commands.addAll(_riskDaypartCommands(riskBand: riskBand, dayPart: dayPart));
+		commands.addAll(_weeklyPersonalizedCommands(weeklyPayload));
 
 		if (breathTrend == 'Declining') {
-			commands.add('KOMUT 2: Nefes testini bugun 2 kez yap ve ortalamayi kaydet.');
+			commands.add('NEFES: Bugun 2 nefes testi yap, her testten sonra 2 dakika yavas nefes uygula.');
 		} else if (breathTrend == 'Improving') {
-			commands.add('KOMUT 2: Nefes kazancini koru, bugun en az 1 nefes rutini uygula.');
+			commands.add('NEFES: Kazanimi koru, risk saatinden once 1 nefes rutini tamamla.');
 		} else {
-			commands.add('KOMUT 2: Her kriz aninda 2 dakika nefes + 1 bardak su uygula.');
+			commands.add('NEFES: Kriz aninda 2 dakika nefes + 1 bardak su uygula.');
 		}
 
 		if (smokingTrend == 'Increasing' || consecutiveTrend == 'trendDeclining') {
-			commands.add('KOMUT 3: Bugun toplam sigara adedini dunun altinda tut.');
+			commands.add('TAKIP: Bugun toplam adedi dunun en az 2 altinda tamamla.');
 		} else {
-			commands.add('KOMUT 3: Bugun secilen gorevlerin tamamina tamamlandi isareti ver.');
+			commands.add('TAKIP: Bugun secilen gorevlerin en az 3 tanesini tamamlandi isaretle.');
 		}
 
 		if ((predictedWindow ?? '').isNotEmpty) {
-			commands.add('HAZIRLIK: ${predictedWindow!} oncesi kriz kiti hazirla.');
+			commands.add('HAZIRLIK: ${predictedWindow!} oncesinde su + sakiz + kisa yuruyus planini hazirla.');
 		}
 		if ((predictedTrigger ?? '').isNotEmpty) {
-			commands.add('TETIKLEYICI: ${predictedTrigger!} aninda sigara yerine alternatife gec.');
+			commands.add('TETIKLEYICI: ${predictedTrigger!} aninda 3 dakika ertele, sonra yeniden karar ver.');
 		}
 		if (riskyHours.isNotEmpty) {
 			commands.add('ODAK: En riskli saat ${riskyHours.first} icin bildirimleri acik tut.');
@@ -115,7 +114,204 @@ class MentorEngine {
 			commands.add('HEDEF: Haftalik risk hedefini $weeklyRiskTarget altina indir.');
 		}
 
-		return commands.take(4).toList();
+		final unique = <String>[];
+		for (final command in commands) {
+			if (!unique.contains(command)) {
+				unique.add(command);
+			}
+		}
+
+		return unique.take(4).toList();
+	}
+
+	List<String> _weeklyPersonalizedCommands(Map<String, dynamic>? weeklyPayload) {
+		if (weeklyPayload == null || weeklyPayload.isEmpty) {
+			return const [];
+		}
+
+		final commands = <String>[];
+		final trigger = weeklyPayload['triggerExposureDays'] as Map<String, dynamic>? ??
+			const <String, dynamic>{};
+		final stressDays = _toInt(trigger['stress']);
+		final coffeeDays = _toInt(trigger['coffee']);
+		final alcoholDays = _toInt(trigger['alcohol']);
+		final socialDays = _toInt(trigger['social']);
+
+		if (stressDays >= 4) {
+			commands.add('TETIKLEYICI-STRES: Stres aninda 90 saniye nefes + 1 bardak su, sonra yeniden karar ver.');
+		}
+		if (coffeeDays >= 4) {
+			commands.add('TETIKLEYICI-KAHVE: Kahveyi 30 dakika geciktir, kahve ile sigarayi baglama.');
+		}
+		if (alcoholDays >= 2) {
+			commands.add('TETIKLEYICI-ALKOL: Alkol gunlerinde ilk teklifte sigaraya hayir de, sakiz/su alternatifi kullan.');
+		}
+		if (socialDays >= 3) {
+			commands.add('TETIKLEYICI-SOSYAL: Sosyal ortama girmeden once hedefini destek kisina mesajla.');
+		}
+
+		final lapseCount = _toInt(weeklyPayload['lapseCount']);
+		final cravingMax = _toInt(weeklyPayload['cravingMax']);
+		final selfEfficacy = _toInt(weeklyPayload['selfEfficacy']);
+		final motivation = _toInt(weeklyPayload['motivation']);
+
+		if (lapseCount >= 2 || cravingMax >= 8) {
+			commands.add('KRIZ: Ilk istek dalgasinda 3 dakika ertele, ikinci dalgada 4D protokolunu uygula.');
+		}
+		if (selfEfficacy <= 4 || motivation <= 4) {
+			commands.add('DESTEK: Bugun tek hedef sec ve tamamlayinca uygulamada isaretle.');
+		}
+
+		return commands;
+	}
+
+	String _riskBand(int riskScore) {
+		if (riskScore >= 70) {
+			return 'high';
+		}
+		if (riskScore >= 40) {
+			return 'medium';
+		}
+		return 'low';
+	}
+
+	String _resolveDayPart({
+		required String? predictedWindow,
+		required List<String> riskyHours,
+	}) {
+		final source = (predictedWindow ?? '').trim().isNotEmpty
+			? predictedWindow!.split('-').first.trim()
+			: (riskyHours.isNotEmpty ? riskyHours.first : '');
+
+		final fromWindow = _parseHourFromText(source);
+		final hour = fromWindow ?? DateTime.now().hour;
+
+		if (hour >= 5 && hour < 11) {
+			return 'morning';
+		}
+		if (hour >= 11 && hour < 17) {
+			return 'day';
+		}
+		if (hour >= 17 && hour < 22) {
+			return 'evening';
+		}
+		return 'night';
+	}
+
+	int? _parseHourFromText(String value) {
+		final match = RegExp(r'(\d{1,2}):\d{2}').firstMatch(value);
+		if (match == null) {
+			return null;
+		}
+		final parsed = int.tryParse(match.group(1) ?? '');
+		if (parsed == null || parsed < 0 || parsed > 23) {
+			return null;
+		}
+		return parsed;
+	}
+
+	int _toInt(dynamic value) {
+		if (value is int) {
+			return value;
+		}
+		if (value is num) {
+			return value.toInt();
+		}
+		if (value is String) {
+			return int.tryParse(value) ?? 0;
+		}
+		return 0;
+	}
+
+	String _progressiveReductionCommand(int riskScore) {
+		if (riskScore >= 75) {
+			return 'Bugun hedef: duneden en az 1 sigara az, ilk sigarayi 90 dakika ertele.';
+		}
+		if (riskScore >= 60) {
+			return 'Bugun hedef: duneden en az 2 sigara az, her sigara oncesi 10 dakika bekle.';
+		}
+		if (riskScore >= 40) {
+			return 'Bugun hedef: duneden en az 3 sigara az, oglen sonrasi 1 sigarayi atla.';
+		}
+		return 'Bugun hedef: mevcut azalmayi koru, riski saatlerde sigara yerine su + sakiz uygula.';
+	}
+
+	List<String> _riskDaypartCommands({
+		required String riskBand,
+		required String dayPart,
+	}) {
+		if (riskBand == 'high') {
+			switch (dayPart) {
+				case 'morning':
+					return const [
+						'SABAH: Ilk sigarayi 90 dakika ertele, once 1 bardak su ic.',
+						'KRIZ: 4D protokolunu uygula (ertele-nefes-su-dikkat dagit).',
+					];
+				case 'day':
+					return const [
+						'OGLE: Yemek sonrasi 7 dakika yuruyus yap, sonra karar ver.',
+						'TETIK: Kahve ile sigarayi ayir, kahveyi 30 dakika geciktir.',
+					];
+				case 'evening':
+					return const [
+						'AKSAM: Sosyal ortamda ilk teklife hayir de, 3 dakika ertele.',
+						'DESTEK: Risk saatinden once destek kisina tek satir mesaj gonder.',
+					];
+				default:
+					return const [
+						'GECE: Bu saatten sonra sigara yok, acil kriz rutini uygula.',
+						'GEVSEME: 3 dakika yavas nefes + su ile gunu kapat.',
+					];
+			}
+		}
+
+		if (riskBand == 'medium') {
+			switch (dayPart) {
+				case 'morning':
+					return const [
+						'SABAH: Ilk sigarayi 45 dakika ertele.',
+						'RUTIN: Kahve oncesi 2 dakika nefes egzersizi yap.',
+					];
+				case 'day':
+					return const [
+						'OGLE: Her sigara oncesi 10 dakika bekle.',
+						'ATLA: Bugun ogleden sonra 1 sigarayi atla.',
+					];
+				case 'evening':
+					return const [
+						'AKSAM: Riskli saatte sakiz/su alternatifi uygula.',
+						'TAKIP: Gun sonu sayiminda hedefi kontrol et.',
+					];
+				default:
+					return const [
+						'GECE: Son sigaradan sonra su ic, tekrar sigara icme.',
+						'PLAN: Yarin ilk sigara saatini simdiden 15 dakika geciktir.',
+					];
+			}
+		}
+
+		switch (dayPart) {
+			case 'morning':
+				return const [
+					'SABAH: Ilk sigarayi en az 25 dakika ertele.',
+					'KORU: Nefes kazancini korumak icin su + nefes rutini yap.',
+				];
+			case 'day':
+				return const [
+					'OGLE: Sadece planli saatlerde karar ver, otomatik yakma yok.',
+					'KORU: Oglen sonrasi 1 sigara yerine 5 dakika yuruyus yap.',
+				];
+			case 'evening':
+				return const [
+					'AKSAM: Sosyal tetikleyicilerde 3 dakika erteleme uygula.',
+					'KORU: Gun sonu notuna bugun ise yarayan yontemi yaz.',
+				];
+			default:
+				return const [
+					'GECE: Bu saatten sonra sigarayi kapat, kriz olursa nefes uygula.',
+					'KORU: Yarin icin risk saatine tek bir onlem yaz.',
+				];
+		}
 	}
 
 	Map<String, dynamic> optimizeActionCommands({

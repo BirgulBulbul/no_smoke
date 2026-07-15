@@ -1377,6 +1377,7 @@ class StorageService {
       riskyHours: riskyHours,
       predictedWindow: prediction['nextRiskWindow']?.toString(),
       predictedTrigger: prediction['nextRiskTrigger']?.toString(),
+      weeklyPayload: weeklyPayload,
     );
     final optimizedCommands = _mentorEngine.optimizeActionCommands(
       commands: coachCommands,
