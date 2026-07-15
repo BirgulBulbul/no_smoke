@@ -435,6 +435,12 @@ class NotificationService {
     required String taskDescription,
   }) async {
     final code = await LanguageService.loadSelectedLanguageCode();
+    final interruptionContext = await _resolveInterruptionContext();
+    final contextLabel =
+        interruptionContext['contextLabel']?.toString() ?? 'normal';
+    final adjustedDescription = contextLabel == 'eating'
+        ? _text(code, 'postMealShieldCommand')
+        : taskDescription;
     final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
     final reminderId = _deriveReminderId(id);
     final watchdogId = 'wdg_$id';
@@ -442,7 +448,7 @@ class NotificationService {
     await _plugin.show(
       id,
       _text(code, 'disciplineCommand'),
-      '${_text(code, 'disciplineCommandBody')}\n$taskDescription',
+      '${_text(code, 'disciplineCommandBody')}\n$adjustedDescription',
       NotificationDetails(
         android: AndroidNotificationDetails(
           _taskStartChannelId,
@@ -509,8 +515,16 @@ class NotificationService {
   }) async {
     final code = await LanguageService.loadSelectedLanguageCode();
     final scheduleMode = await _resolveAndroidScheduleMode();
+    final interruptionContext = await _resolveInterruptionContext();
+    final extraDelay =
+        (interruptionContext['recommendedDeferralMinutes'] as int?) ?? 0;
+    final contextLabel =
+        interruptionContext['contextLabel']?.toString() ?? 'normal';
     final now = tz.TZDateTime.now(tz.local);
-    final fireAt = now.add(delay);
+    final fireAt = now.add(delay).add(Duration(minutes: extraDelay));
+    final adjustedDescription = contextLabel == 'eating'
+        ? _text(code, 'postMealShieldCommand')
+        : taskDescription;
     final id = DateTime.now().millisecondsSinceEpoch.remainder(2147483647);
     final reminderId = _deriveReminderId(id);
     final watchdogId = 'wdg_$id';
@@ -518,7 +532,7 @@ class NotificationService {
     await _plugin.zonedSchedule(
       id,
       _text(code, 'disciplineCommand'),
-      '${_text(code, 'disciplineCommandBody')}\n$taskDescription',
+      '${_text(code, 'disciplineCommandBody')}\n$adjustedDescription',
       fireAt,
       NotificationDetails(
         android: AndroidNotificationDetails(
@@ -560,20 +574,20 @@ class NotificationService {
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: jsonEncode({
         'type': _typeTaskStart,
-        'taskTitle': taskDescription,
+        'taskTitle': adjustedDescription,
         'reminderId': '$reminderId',
         'watchdogId': watchdogId,
       }),
     );
 
     await AndroidWatchdogService.startWatchdog(
-      taskTitle: taskDescription,
+      taskTitle: adjustedDescription,
       watchdogId: watchdogId,
       dueAt: dueAt,
     );
 
     await _scheduleUnansweredTaskUpdateReminder(
-      taskTitle: taskDescription,
+      taskTitle: adjustedDescription,
       type: _typeTaskStart,
       reminderId: reminderId,
       triggerAt: fireAt.add(_unansweredReminderDelay),
@@ -602,17 +616,27 @@ class NotificationService {
         ? scheduledDate.add(const Duration(days: 1))
         : scheduledDate;
 
-    final isDriving = await _isLikelyDrivingNow();
-    if (isDriving) {
-      finalDate = finalDate.add(const Duration(minutes: 20));
+    final interruptionContext = await _resolveInterruptionContext();
+    final extraDelay =
+        (interruptionContext['recommendedDeferralMinutes'] as int?) ?? 0;
+    final contextLabel =
+        interruptionContext['contextLabel']?.toString() ?? 'normal';
+    if (extraDelay > 0) {
+      finalDate = finalDate.add(Duration(minutes: extraDelay));
     }
+
+    final body = contextLabel == 'driving'
+        ? _text(code, 'breathReminderDriving')
+        : contextLabel == 'workout'
+        ? _text(code, 'breathReminderWorkout')
+        : contextLabel == 'eating'
+        ? _text(code, 'breathReminderPostMeal')
+        : _text(code, 'breathReminderBody');
 
     await _plugin.zonedSchedule(
       0,
       _text(code, 'breathReminderTitle'),
-      isDriving
-          ? _text(code, 'breathReminderDriving')
-          : _text(code, 'breathReminderBody'),
+        body,
       finalDate,
       const NotificationDetails(
         android: AndroidNotificationDetails(
@@ -641,11 +665,20 @@ class NotificationService {
     final scheduleMode = await _resolveAndroidScheduleMode();
     final code = await LanguageService.loadSelectedLanguageCode();
     final now = tz.TZDateTime.now(tz.local);
-    var fireAt = now.add(delay);
-    final isDriving = await _isLikelyDrivingNow();
-    if (isDriving) {
-      fireAt = fireAt.add(const Duration(minutes: 20));
-    }
+    final interruptionContext = await _resolveInterruptionContext();
+    final extraDelay =
+        (interruptionContext['recommendedDeferralMinutes'] as int?) ?? 0;
+    final contextLabel =
+        interruptionContext['contextLabel']?.toString() ?? 'normal';
+    var fireAt = now.add(delay).add(Duration(minutes: extraDelay));
+
+    final followUpBody = contextLabel == 'driving'
+        ? _text(code, 'taskFollowUpQuestionDriving')
+        : contextLabel == 'workout'
+        ? _text(code, 'taskFollowUpQuestionWorkout')
+        : contextLabel == 'eating'
+        ? _text(code, 'taskFollowUpQuestionPostMeal')
+        : '${_text(code, 'taskFollowUpQuestion')}\n$taskTitle';
 
     final notificationId = DateTime.now().millisecondsSinceEpoch.remainder(
       2147483647,
@@ -655,9 +688,7 @@ class NotificationService {
     await _plugin.zonedSchedule(
       notificationId,
       _text(code, 'taskFollowUpTitlePush'),
-      isDriving
-          ? _text(code, 'taskFollowUpQuestionDriving')
-          : '${_text(code, 'taskFollowUpQuestion')}\n$taskTitle',
+        followUpBody,
       fireAt,
       NotificationDetails(
         android: AndroidNotificationDetails(
@@ -811,10 +842,15 @@ class NotificationService {
     final normalizedFirstAt = firstAt.isAfter(now)
         ? firstAt
         : now.add(const Duration(minutes: 2));
+    final interruptionContext = await _resolveInterruptionContext();
+    final extraDelay =
+      (interruptionContext['recommendedDeferralMinutes'] as int?) ?? 0;
 
     final maxCount = commands.length < 3 ? commands.length : 3;
     for (var i = 0; i < maxCount; i++) {
-      final fireAt = normalizedFirstAt.add(Duration(minutes: i * 20));
+      final fireAt = normalizedFirstAt
+          .add(Duration(minutes: i * 20))
+          .add(Duration(minutes: extraDelay));
       final id =
           (DateTime.now().millisecondsSinceEpoch + 700000 + i).remainder(
             2147483647,
@@ -865,12 +901,17 @@ class NotificationService {
     }
   }
 
-  static Future<bool> _isLikelyDrivingNow() async {
+  static Future<Map<String, dynamic>> _resolveInterruptionContext() async {
     try {
-      final summary = await PhoneStateService().inferDailyStateSummary();
-      return summary['drivingPrediction'] == 'driving';
+      return await PhoneStateService().inferRealtimeInterruptionContext();
     } catch (_) {
-      return false;
+      return {
+        'isDriving': false,
+        'isRunningOrWorkout': false,
+        'isEatingLikely': false,
+        'recommendedDeferralMinutes': 0,
+        'contextLabel': 'normal',
+      };
     }
   }
 
@@ -913,10 +954,20 @@ class NotificationService {
       'breathReminderBody': 'Günlük nefes testi zamanı geldi.',
       'breathReminderDriving':
           'Sürüşte güvenliğiniz için hatırlatma kısa süre ertelendi.',
+        'breathReminderWorkout':
+          'Aktivite tamamlaninca hatirlatma tekrar gonderilecek.',
+        'breathReminderPostMeal':
+          'Yemek sonrasi sigarayi ertelemek icin nefes rutinini simdi uygula.',
       'taskFollowUpTitlePush': 'Görev Takibi',
       'taskFollowUpQuestion': 'Gorevi basariyla tamamladiniz mi?',
       'taskFollowUpQuestionDriving':
           'Surus sonrasi cevaplayin: Gorevi basariyla tamamladiniz mi?',
+        'taskFollowUpQuestionWorkout':
+          'Aktivite sonrasi cevaplayin: Gorevi basariyla tamamladiniz mi?',
+        'taskFollowUpQuestionPostMeal':
+          'Yemek sonrasi sigara istegini yonetebildiniz mi?',
+        'postMealShieldCommand':
+          'Yemek sonrasi 10 dakika ertele + su + sakiz rutini uygula.',
       'taskTimerStartedTitle': 'İlk Görev',
       'taskTimerStartedBody': 'Görev başladı:',
       'taskEscalationTitle': 'Gorev guncellendi',
@@ -945,10 +996,20 @@ class NotificationService {
       'breathReminderTitle': 'Breath Test',
       'breathReminderBody': 'Time for your daily breath test.',
       'breathReminderDriving': 'Reminder delayed briefly for driving safety.',
+        'breathReminderWorkout':
+          'Reminder deferred until your activity cool-down window.',
+        'breathReminderPostMeal':
+          'Use a post-meal breathing routine now to avoid smoking.',
       'taskFollowUpTitlePush': 'Task Follow-up',
       'taskFollowUpQuestion': 'Did you complete the task successfully?',
       'taskFollowUpQuestionDriving':
           'Answer after driving: Did you complete the task successfully?',
+        'taskFollowUpQuestionWorkout':
+          'Answer after your activity: Did you complete the task successfully?',
+        'taskFollowUpQuestionPostMeal':
+          'After the meal window, did you manage the urge without smoking?',
+        'postMealShieldCommand':
+          'After meal: delay 10 minutes, drink water, and use gum.',
       'taskTimerStartedTitle': 'First Task',
       'taskTimerStartedBody': 'Task started:',
       'taskEscalationTitle': 'Task updated',
