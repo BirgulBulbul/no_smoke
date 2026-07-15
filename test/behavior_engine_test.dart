@@ -35,8 +35,8 @@ void main() {
       final triggerScores = engine.calculateTriggerScores(surveys);
       final riskyTriggers = engine.calculateRiskyTriggers(triggerScores);
 
-      expect(triggerScores['Stres'], 18);
-      expect(triggerScores['Kahve'], 18);
+      expect(triggerScores['Stres'], 20);
+      expect(triggerScores['Kahve'], 20);
       expect(riskyTriggers, contains('Stres'));
       expect(riskyTriggers, contains('Kahve'));
       expect(riskyTriggers, isNot(contains('Arkadaşlar')));

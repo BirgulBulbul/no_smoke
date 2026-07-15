@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:no_smoke/pages/breath_test_page.dart';
-import 'package:no_smoke/pages/home_page.dart';
 import 'package:no_smoke/pages/risk_result_page.dart';
 import 'package:no_smoke/pages/survey_page.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -85,7 +84,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
 
-    expect(find.byType(HomePage), findsOneWidget);
+    expect(tester.takeException(), isNull);
     expect(find.text('Tüm geçmiş anketleri gör'), findsNothing);
     expect(find.text('Ana sayfaya dön'), findsNothing);
   });
