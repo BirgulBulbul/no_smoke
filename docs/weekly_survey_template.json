@@ -1,0 +1,45 @@
+{
+  "surveyVersion": "2.0.0",
+  "recordedAt": "2026-07-15T12:00:00Z",
+  "userId": "example_user",
+  "answers": {
+    "avgCigarettesPerDay": 8,
+    "deltaVsLastWeek": "same",
+    "lapseCount": 1,
+    "cravingAvg": 6,
+    "cravingMax": 8,
+    "withdrawal": {
+      "irritability": 2,
+      "anxiety": 2,
+      "sleepProblem": 1,
+      "concentrationProblem": 1,
+      "appetiteIncrease": 1
+    },
+    "triggerExposureDays": {
+      "coffee": 5,
+      "meal": 4,
+      "driving": 2,
+      "stress": 6,
+      "phone": 4,
+      "social": 3,
+      "alcohol": 1
+    },
+    "alcoholDays": 1,
+    "socialSmokingContextDays": 2,
+    "treatment": {
+      "medicationUse": "regular",
+      "sideEffects": false,
+      "adherence": 8
+    },
+    "support": {
+      "usedCounselingOrQuitline": false,
+      "familySupport": 6
+    },
+    "selfEfficacy": 7,
+    "motivation": 8,
+    "task": {
+      "weeklyCompletionRate": 7,
+      "mostHelpfulCategory": "breath"
+    }
+  }
+}
