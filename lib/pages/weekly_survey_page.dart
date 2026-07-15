@@ -978,11 +978,6 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              context.t('weeklySavePrompt'),
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
             _buildSurveyModeCard(),
             const SizedBox(height: 10),
             Container(

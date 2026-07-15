@@ -313,13 +313,8 @@ class _BreathTestPageState extends State<BreathTestPage> {
     return 'Dik oturun, burundan derin nefes alın, \n2 saniye tutun ve tek seferde kontrollü verin.\n\n3 deneme yapılacak, en iyi skor kaydedilir.';
   }
 
-  String _getCurrentTestName() {
-    return 'Nefes dayanimi denemesi';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final currentSeconds = _isResting
         ? _restSecondsLeft
         : _stopwatch.elapsed.inSeconds;
@@ -401,7 +396,7 @@ class _BreathTestPageState extends State<BreathTestPage> {
                         boxShadow: isCurrent
                             ? [
                                 BoxShadow(
-                                  color: Colors.blue.withOpacity(0.4),
+                                  color: Colors.blue.withValues(alpha: 0.4),
                                   blurRadius: 12,
                                   spreadRadius: 2,
                                 )
