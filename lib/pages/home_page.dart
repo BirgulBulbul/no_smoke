@@ -243,7 +243,12 @@ class _HomePageState extends State<HomePage> {
       endAt: now,
     );
 
+    if (!mounted) {
+      return;
+    }
+
     if (isSuspicious) {
+      final taskStartTitle = context.t('taskStartTitle');
       await _storageService.saveProtocolViolation(
         type: 'suspicious_behavior',
         severity: 'high',
@@ -258,7 +263,7 @@ class _HomePageState extends State<HomePage> {
         completedAt: now,
       );
       await NotificationService.showFirstTaskTriggerNotification(
-        taskTitle: context.t('taskStartTitle'),
+        taskTitle: taskStartTitle,
         taskDescription: taskTitle,
       );
       await NotificationService.scheduleTaskFollowUpReminder(
@@ -676,6 +681,10 @@ class _HomePageState extends State<HomePage> {
       sleepAt = sleepAt.add(const Duration(days: 1));
     }
 
+    if (!mounted) {
+      return;
+    }
+
     final fallbackTask = _todaysTasks.isNotEmpty
         ? _todaysTasks.first
         : context.t('firstTaskNoSmoke15');
@@ -1074,6 +1083,10 @@ class _HomePageState extends State<HomePage> {
               content: Text(context.t('notificationPermissionRequired')),
             ),
           );
+        }
+
+        if (!mounted) {
+          return;
         }
 
         await NotificationService.showFirstTaskTriggerNotification(

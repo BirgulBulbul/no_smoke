@@ -128,7 +128,7 @@ class _ProtocolViolationsPageState extends State<ProtocolViolationsPage> {
                                             vertical: 4,
                                           ),
                                           decoration: BoxDecoration(
-                                            color: _severityColor(row.severity).withOpacity(0.18),
+                                            color: _severityColor(row.severity).withValues(alpha: 0.18),
                                             borderRadius: BorderRadius.circular(10),
                                           ),
                                           child: Text(row.severity.toUpperCase()),
