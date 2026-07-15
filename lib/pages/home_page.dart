@@ -716,6 +716,40 @@ class _HomePageState extends State<HomePage> {
     await _storageService.saveSetting('last_coach_command_signature', signature);
   }
 
+  Future<void> _completeCoachCommand(String command) async {
+    await _storageService.saveTaskResult(
+      taskTitle: command,
+      taskResult: 'willpower_success',
+      completedAt: DateTime.now(),
+    );
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Komut tamamlandi olarak kaydedildi.')),
+    );
+    await _loadHomeMetrics();
+  }
+
+  Future<void> _deferCoachCommand(String command) async {
+    await _storageService.saveTaskResult(
+      taskTitle: command,
+      taskResult: 'deferred',
+      completedAt: DateTime.now(),
+    );
+    await NotificationService.scheduleFirstTaskTriggerNotification(
+      taskDescription: command,
+      delay: const Duration(minutes: 10),
+    );
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Komut 10 dakika ertelendi.')),
+    );
+    await _loadHomeMetrics();
+  }
+
   Future<void> _presentMandatoryTaskIfNeeded() async {
     if (!mounted || _mandatoryTaskShown || !_registrationCompleted) {
       return;
@@ -1540,8 +1574,27 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 6),
               ..._coachCommands.map(
                 (command) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text('- $command'),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('- $command'),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => _completeCoachCommand(command),
+                            child: const Text('Tamam'),
+                          ),
+                          TextButton(
+                            onPressed: () => _deferCoachCommand(command),
+                            child: const Text('Ertele 10 dk'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],

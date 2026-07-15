@@ -1403,12 +1403,18 @@ class StorageService {
       recentSuccessCount: recentSuccessCount,
       recentFailureCount: recentFailureCount,
     );
+    final adaptiveCommandCount = _resolveAdaptiveCommandCount(
+      weeklyPayload: weeklyPayload,
+      riskScore: dynamicRisk,
+      recentSuccessCount: recentSuccessCount,
+      recentFailureCount: recentFailureCount,
+    );
     final balancedCoachCommands = _mentorEngine.rebalanceCommandMix(
       orderedCommands: optimizedCoachCommands,
       commandScores: commandSuccessScores,
       categoryScores: commandCategoryScores,
       mode: commandMixMode,
-      maxCount: 4,
+      maxCount: adaptiveCommandCount,
     );
 
     final riskExplanation = _behaviorEngine.buildRiskExplanation(
@@ -1421,6 +1427,7 @@ class StorageService {
     );
     riskExplanation.add('Haftalik anket skoru: $weeklyRiskScore ($weeklyRiskLevel)');
     riskExplanation.add('Komut dengeleme modu: $commandMixMode');
+    riskExplanation.add('Gunluk komut adedi: $adaptiveCommandCount');
 
     final dashboard = _behaviorEngine.buildDashboard(
       riskScore: dynamicRisk,
@@ -1510,6 +1517,52 @@ class StorageService {
     }
 
     return 'balanced';
+  }
+
+  int _resolveAdaptiveCommandCount({
+    required Map<String, dynamic> weeklyPayload,
+    required int riskScore,
+    required int recentSuccessCount,
+    required int recentFailureCount,
+  }) {
+    var count = 4;
+    final task =
+        weeklyPayload['task'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final burden = (task['commandBurdenLevel']?.toString() ?? 'orta')
+        .toLowerCase();
+    final adherence = (task['dailyTaskAdherenceLevel']?.toString() ?? 'orta')
+        .toLowerCase();
+
+    if (burden == 'cok') {
+      count -= 1;
+    } else if (burden == 'az') {
+      count += 1;
+    }
+
+    if (adherence == 'az') {
+      count -= 1;
+    } else if (adherence == 'cok') {
+      count += 1;
+    }
+
+    if (recentSuccessCount >= recentFailureCount + 3) {
+      count += 1;
+    } else if (recentFailureCount > recentSuccessCount + 1) {
+      count -= 1;
+    }
+
+    if (riskScore >= 75) {
+      count = count < 4 ? 4 : count;
+    }
+
+    if (count < 2) {
+      return 2;
+    }
+    if (count > 5) {
+      return 5;
+    }
+    return count;
   }
 
   bool _isWithinWindow({

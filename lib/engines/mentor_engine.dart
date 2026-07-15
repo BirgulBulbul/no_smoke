@@ -82,6 +82,7 @@ class MentorEngine {
 		final commands = <String>[];
 		final dayPart = _resolveDayPart(predictedWindow: predictedWindow, riskyHours: riskyHours);
 		final riskBand = _riskBand(riskScore);
+		final burdenLevel = _commandBurdenLevel(weeklyPayload);
 
 		commands.add('KADEMELI: ${_progressiveReductionCommand(riskScore)}');
 		commands.addAll(_riskDaypartCommands(riskBand: riskBand, dayPart: dayPart));
@@ -121,7 +122,54 @@ class MentorEngine {
 			}
 		}
 
-		return unique.take(4).toList();
+		final selected = unique.take(4).toList();
+		return _applyBurdenStyle(selected, burdenLevel);
+	}
+
+	String _commandBurdenLevel(Map<String, dynamic>? weeklyPayload) {
+		final task = weeklyPayload?['task'] as Map<String, dynamic>? ??
+			const <String, dynamic>{};
+		final level = (task['commandBurdenLevel']?.toString() ?? 'orta').toLowerCase();
+		if (level == 'az' || level == 'cok') {
+			return level;
+		}
+		return 'orta';
+	}
+
+	List<String> _applyBurdenStyle(List<String> commands, String burdenLevel) {
+		if (burdenLevel == 'cok') {
+			return commands.map(_softenCommandTone).toList();
+		}
+		if (burdenLevel == 'az') {
+			return commands.map(_activateCommandTone).toList();
+		}
+		return commands;
+	}
+
+	String _softenCommandTone(String command) {
+		var result = command
+			.replaceAll('mutlaka ', '')
+			.replaceAll('en az ', '')
+			.replaceAll('tamamla', 'dene')
+			.replaceAll('uygula', 'dene')
+			.replaceAll('kapat', 'azalt');
+		result = result.replaceAll(RegExp(r'\s+'), ' ').trim();
+		if (result.endsWith('!')) {
+			result = '${result.substring(0, result.length - 1)}.';
+		}
+		return result;
+	}
+
+	String _activateCommandTone(String command) {
+		var result = command.replaceAll('dene', 'uygula');
+		if (!result.endsWith('!')) {
+			if (result.endsWith('.')) {
+				result = '${result.substring(0, result.length - 1)}!';
+			} else {
+				result = '$result!';
+			}
+		}
+		return result;
 	}
 
 	List<String> _weeklyPersonalizedCommands(Map<String, dynamic>? weeklyPayload) {

@@ -65,6 +65,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
   int _selfEfficacy = 6;
   int _motivation = 7;
   int _weeklyCompletionRate = 6;
+  String _dailyTaskAdherenceLevel = 'orta';
+  String _commandBurdenLevel = 'orta';
 
   String get _resolvedPacksPerDay {
     if (_packOption == '3+ paket') {
@@ -189,6 +191,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
       'motivation': _motivation,
       'task': {
         'weeklyCompletionRate': _weeklyCompletionRate,
+        'dailyTaskAdherenceLevel': _dailyTaskAdherenceLevel,
+        'commandBurdenLevel': _commandBurdenLevel,
         'mostHelpfulCategory': 'breath',
       },
     };
@@ -270,6 +274,12 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
       'motivation': motivation,
       'task': {
         'weeklyCompletionRate': completion,
+        'dailyTaskAdherenceLevel': isGood
+            ? 'cok'
+            : isBad
+            ? 'az'
+            : 'orta',
+        'commandBurdenLevel': isBad ? 'cok' : 'orta',
         'mostHelpfulCategory': 'breath',
       },
     };
@@ -332,6 +342,8 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
         const <String, dynamic>{};
     final completion = task['weeklyCompletionRate'] as int? ?? 0;
     final adherence = treatment['adherence'] as int? ?? 0;
+    final dailyTaskAdherenceLevel =
+      (task['dailyTaskAdherenceLevel']?.toString() ?? 'orta').toLowerCase();
 
     var c = avgCigs <= 0
         ? 0
@@ -377,6 +389,11 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
             0.06 * p)
         .round()
         .clamp(0, 100);
+    if (dailyTaskAdherenceLevel == 'az') {
+      score = (score + 8).clamp(0, 100);
+    } else if (dailyTaskAdherenceLevel == 'cok') {
+      score = (score - 6).clamp(0, 100);
+    }
     if (lapseCount >= 3 && cravingMax >= 8) {
       score = (score + 12).clamp(0, 100);
     }
@@ -758,6 +775,37 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
                 min: 0,
                 max: 10,
                 onChanged: (v) => setState(() => _weeklyCompletionRate = v),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _dailyTaskAdherenceLevel,
+                decoration: const InputDecoration(
+                  labelText: 'Gunluk gorevlere ne kadar uydun?',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'az', child: Text('Az')),
+                  DropdownMenuItem(value: 'orta', child: Text('Orta')),
+                  DropdownMenuItem(value: 'cok', child: Text('Cok')),
+                ],
+                onChanged: (value) => setState(
+                  () => _dailyTaskAdherenceLevel = value ?? 'orta',
+                ),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _commandBurdenLevel,
+                decoration: const InputDecoration(
+                  labelText: 'Komutlar seni rahatsiz etti mi?',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'az', child: Text('Az')),
+                  DropdownMenuItem(value: 'orta', child: Text('Orta')),
+                  DropdownMenuItem(value: 'cok', child: Text('Cok')),
+                ],
+                onChanged: (value) =>
+                    setState(() => _commandBurdenLevel = value ?? 'orta'),
               ),
             ] else ...[
               const SizedBox(height: 10),

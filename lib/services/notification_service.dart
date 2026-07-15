@@ -825,7 +825,7 @@ class NotificationService {
         'Kisisel Komut',
         commands[i],
         fireAt,
-        const NotificationDetails(
+        NotificationDetails(
           android: AndroidNotificationDetails(
             _taskStartChannelId,
             'Kisisel komut bildirimi',
@@ -834,15 +834,32 @@ class NotificationService {
             playSound: true,
             audioAttributesUsage: AudioAttributesUsage.alarm,
             category: AndroidNotificationCategory.reminder,
+            actions: <AndroidNotificationAction>[
+              AndroidNotificationAction(
+                _actionTaskDone,
+                _text(code, 'taskActionDoneLabel'),
+                showsUserInterface: true,
+                cancelNotification: true,
+              ),
+              AndroidNotificationAction(
+                _actionTaskNotNow,
+                _text(code, 'taskActionNotNowLabel'),
+                showsUserInterface: true,
+                cancelNotification: true,
+              ),
+            ],
           ),
-          iOS: DarwinNotificationDetails(presentSound: true),
+          iOS: const DarwinNotificationDetails(
+            categoryIdentifier: _categoryTaskStart,
+            presentSound: true,
+          ),
         ),
         androidScheduleMode: scheduleMode,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         payload: jsonEncode({
           'type': _typeTaskStart,
-          'taskTitle': _text(code, 'disciplineCommand'),
+          'taskTitle': commands[i],
         }),
       );
     }
