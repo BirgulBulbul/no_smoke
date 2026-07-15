@@ -116,12 +116,7 @@ class _SurveyPageState extends State<SurveyPage> {
     });
   }
 
-  static const List<String> smokingYearOptions = [
-    '1-3 yıl',
-    '4-7 yıl',
-    '8-10 yıl',
-    '10+ yıl',
-  ];
+
 
   static const List<Map<String, String>> workDayOptions = [
     {'key': 'Mon', 'label': 'Pzt'},
@@ -167,19 +162,96 @@ class _SurveyPageState extends State<SurveyPage> {
     }
   }
 
-  String _smokingYearsLabel(String value, BuildContext context) {
-    switch (value) {
-      case '1-3 yıl':
-        return context.t('smokingYears1to3');
-      case '4-7 yıl':
-        return context.t('smokingYears4to7');
-      case '8-10 yıl':
-        return context.t('smokingYears8to10');
-      case '10+ yıl':
-        return context.t('smokingYears10plus');
-      default:
-        return value;
-    }
+  // Parse HH:MM time string to (hours, minutes)
+  (int, int) _parseTimeString(String? timeStr) {
+    if (timeStr == null || timeStr.isEmpty) return (7, 0);
+    final parts = timeStr.split(':');
+    if (parts.length != 2) return (7, 0);
+    final h = int.tryParse(parts[0]) ?? 7;
+    final m = int.tryParse(parts[1]) ?? 0;
+    return (h, m);
+  }
+
+  // Format hours and minutes to HH:MM
+  String _formatTime(int hours, int minutes) {
+    return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}';
+  }
+
+  // Build time picker with separate hour and minute dropdowns
+  Widget _buildTimePickerRow({
+    required String label,
+    required String? currentValue,
+    required List<int> minuteOptions,
+    required Function(String) onChanged,
+  }) {
+    final (currentHour, currentMinute) = _parseTimeString(currentValue);
+    final hourList = List.generate(24, (i) => i);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              // Hours dropdown
+              Expanded(
+                child: DropdownButton<int>(
+                  isExpanded: true,
+                  value: currentHour,
+                  items: hourList.map((h) {
+                    return DropdownMenuItem(
+                      value: h,
+                      child: Text(
+                        h.toString().padLeft(2, '0'),
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (newHour) {
+                    if (newHour != null) {
+                      onChanged(_formatTime(newHour, currentMinute));
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                ':',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(width: 12),
+              // Minutes dropdown
+              Expanded(
+                child: DropdownButton<int>(
+                  isExpanded: true,
+                  value: minuteOptions.contains(currentMinute) ? currentMinute : minuteOptions.first,
+                  items: minuteOptions.map((m) {
+                    return DropdownMenuItem(
+                      value: m,
+                      child: Text(
+                        m.toString().padLeft(2, '0'),
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (newMinute) {
+                    if (newMinute != null) {
+                      onChanged(_formatTime(currentHour, newMinute));
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   List<String> _selectedTriggerLabels() {
@@ -783,21 +855,14 @@ class _SurveyPageState extends State<SurveyPage> {
                 },
               ),
               const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
+              TextFormField(
                 initialValue: smokingYears,
                 decoration: InputDecoration(
                   labelText: context.t('smokingYears'),
+                  hintText: 'örn: 5',
                   border: OutlineInputBorder(),
                 ),
-                hint: Text(context.t('selectOption')),
-                items: smokingYearOptions
-                    .map(
-                      (value) => DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(_smokingYearsLabel(value, context)),
-                      ),
-                    )
-                    .toList(),
+                keyboardType: TextInputType.number,
                 onChanged: (value) {
                   setState(() {
                     smokingYears = value;
@@ -806,6 +871,10 @@ class _SurveyPageState extends State<SurveyPage> {
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return '';
+                  }
+                  final intValue = int.tryParse(value);
+                  if (intValue == null || intValue < 0 || intValue > 100) {
+                    return context.t('validationSmokeYearsRange');
                   }
                   return null;
                 },
@@ -830,103 +899,44 @@ class _SurveyPageState extends State<SurveyPage> {
               ),
               const SizedBox(height: 20),
               sectionTitle(context.t('lifeRoutine')),
-              DropdownButtonFormField<String>(
-                initialValue: sleepTime,
-                decoration: InputDecoration(
-                  labelText: context.t('sleepTime'),
-                  border: OutlineInputBorder(),
-                ),
-                hint: Text(context.t('selectOption')),
-                items: timeOptions
-                    .map(
-                      (time) => DropdownMenuItem<String>(
-                        value: time,
-                        child: Text(time),
-                      ),
-                    )
-                    .toList(),
+              _buildTimePickerRow(
+                label: context.t('sleepTime'),
+                currentValue: sleepTime,
+                minuteOptions: [0, 15, 30, 45],
                 onChanged: (value) {
                   setState(() {
                     sleepTime = value;
                   });
                 },
               ),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                initialValue: wakeTime,
-                decoration: InputDecoration(
-                  labelText: context.t('wakeTime'),
-                  border: OutlineInputBorder(),
-                ),
-                hint: Text(context.t('selectOption')),
-                items: timeOptions
-                    .map(
-                      (time) => DropdownMenuItem<String>(
-                        value: time,
-                        child: Text(time),
-                      ),
-                    )
-                    .toList(),
+              _buildTimePickerRow(
+                label: context.t('wakeTime'),
+                currentValue: wakeTime,
+                minuteOptions: [0, 15, 30, 45],
                 onChanged: (value) {
                   setState(() {
                     wakeTime = value;
                   });
                 },
               ),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                initialValue: workStartTime,
-                decoration: InputDecoration(
-                  labelText: context.t('workStart'),
-                  border: OutlineInputBorder(),
-                ),
-                hint: Text(context.t('selectOption')),
-                items: workTimeOptions
-                    .map(
-                      (time) => DropdownMenuItem<String>(
-                        value: time,
-                        child: Text(time),
-                      ),
-                    )
-                    .toList(),
+              _buildTimePickerRow(
+                label: context.t('workStart'),
+                currentValue: workStartTime,
+                minuteOptions: [0, 30],
                 onChanged: (value) {
                   setState(() {
                     workStartTime = value;
                   });
                 },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return '';
-                  }
-                  return null;
-                },
               ),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                initialValue: workEndTime,
-                decoration: InputDecoration(
-                  labelText: context.t('workEnd'),
-                  border: OutlineInputBorder(),
-                ),
-                hint: Text(context.t('selectOption')),
-                items: workTimeOptions
-                    .map(
-                      (time) => DropdownMenuItem<String>(
-                        value: time,
-                        child: Text(time),
-                      ),
-                    )
-                    .toList(),
+              _buildTimePickerRow(
+                label: context.t('workEnd'),
+                currentValue: workEndTime,
+                minuteOptions: [0, 30],
                 onChanged: (value) {
                   setState(() {
                     workEndTime = value;
                   });
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return '';
-                  }
-                  return null;
                 },
               ),
               const SizedBox(height: 10),
@@ -1243,57 +1253,6 @@ class _SurveyPageState extends State<SurveyPage> {
                   });
                 },
               ),
-              const SizedBox(height: 25),
-              sectionTitle('Sure Bariyeri Tercihi'),
-              DropdownButtonFormField<String>(
-                initialValue: durationBarrierPreference,
-                decoration: const InputDecoration(
-                  labelText: 'Sure bariyerlerini nasil buluyorsun?',
-                  border: OutlineInputBorder(),
-                ),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'Begeniyorum',
-                    child: Text('Begeniyorum'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Farketmez',
-                    child: Text('Farketmez'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Begenmiyorum',
-                    child: Text('Begenmiyorum'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Istemiyorum',
-                    child: Text('Istemiyorum'),
-                  ),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    durationBarrierPreference = value ?? 'Farketmez';
-                  });
-                },
-              ),
-              const SizedBox(height: 10),
-              if (durationBarrierPreference != 'Istemiyorum')
-                DropdownButtonFormField<String>(
-                  initialValue: durationBarrierFrequencyPreference,
-                  decoration: const InputDecoration(
-                    labelText: 'Sure bariyeri sikligi nasil olmali?',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'Az', child: Text('Az')),
-                    DropdownMenuItem(value: 'Orta', child: Text('Orta')),
-                    DropdownMenuItem(value: 'Cok', child: Text('Cok')),
-                  ],
-                  onChanged: (value) {
-                    setState(() {
-                      durationBarrierFrequencyPreference = value ?? 'Orta';
-                    });
-                  },
-                ),
               const SizedBox(height: 25),
               SizedBox(
                 width: double.infinity,
