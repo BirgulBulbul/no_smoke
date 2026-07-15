@@ -731,6 +731,72 @@ class NotificationService {
     );
   }
 
+  static Future<void> scheduleCoachCommandNotifications({
+    required List<String> commands,
+    String? predictedRiskWindow,
+  }) async {
+    if (commands.isEmpty) {
+      return;
+    }
+
+    final scheduleMode = await _resolveAndroidScheduleMode();
+    final code = await LanguageService.loadSelectedLanguageCode();
+    final now = tz.TZDateTime.now(tz.local);
+    final windowStart = _parseWindowStart(predictedRiskWindow);
+
+    var base = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      windowStart?.hour ?? now.hour,
+      windowStart?.minute ?? now.minute,
+    );
+    if (!base.isAfter(now)) {
+      base = base.add(const Duration(days: 1));
+    }
+
+    final firstAt = base.subtract(const Duration(minutes: 30));
+    final normalizedFirstAt = firstAt.isAfter(now)
+        ? firstAt
+        : now.add(const Duration(minutes: 2));
+
+    final maxCount = commands.length < 3 ? commands.length : 3;
+    for (var i = 0; i < maxCount; i++) {
+      final fireAt = normalizedFirstAt.add(Duration(minutes: i * 20));
+      final id =
+          (DateTime.now().millisecondsSinceEpoch + 700000 + i).remainder(
+            2147483647,
+          );
+
+      await _plugin.zonedSchedule(
+        id,
+        'Kisisel Komut',
+        commands[i],
+        fireAt,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _taskStartChannelId,
+            'Kisisel komut bildirimi',
+            importance: Importance.max,
+            priority: Priority.high,
+            playSound: true,
+            audioAttributesUsage: AudioAttributesUsage.alarm,
+            category: AndroidNotificationCategory.reminder,
+          ),
+          iOS: DarwinNotificationDetails(presentSound: true),
+        ),
+        androidScheduleMode: scheduleMode,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: jsonEncode({
+          'type': _typeTaskStart,
+          'taskTitle': _text(code, 'disciplineCommand'),
+        }),
+      );
+    }
+  }
+
   static Future<bool> _isLikelyDrivingNow() async {
     try {
       final summary = await PhoneStateService().inferDailyStateSummary();
@@ -738,6 +804,27 @@ class NotificationService {
     } catch (_) {
       return false;
     }
+  }
+
+  static DateTime? _parseWindowStart(String? predictedRiskWindow) {
+    if (predictedRiskWindow == null || predictedRiskWindow.trim().isEmpty) {
+      return null;
+    }
+
+    final first = predictedRiskWindow.split('-').first.trim();
+    final parts = first.split(':');
+    if (parts.length != 2) {
+      return null;
+    }
+
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) {
+      return null;
+    }
+
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day, hour, minute);
   }
 
   static String _text(String code, String key) {

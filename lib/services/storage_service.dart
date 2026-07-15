@@ -841,6 +841,18 @@ class StorageService {
         coachCommands: (data['coachCommands'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),
+        riskExplanation:
+            (data['riskExplanation'] as List<dynamic>? ?? const [])
+                .map((item) => item.toString())
+                .toList(),
+        learnedWeights: (data['learnedWeights'] as Map<String, dynamic>? ??
+                const <String, dynamic>{})
+            .map(
+              (key, value) => MapEntry(
+                key,
+                (value as num?)?.toDouble() ?? 1.0,
+              ),
+            ),
       predictedRiskWindow:
           data['predictedRiskWindow']?.toString() ?? '20:00-22:00',
       predictionConfidence:
@@ -1164,23 +1176,36 @@ class StorageService {
       hasBreathTests: breathRecords.isNotEmpty,
     );
 
+    final learnedWeights = _behaviorEngine.learnDynamicWeightsFromRecentHistory(
+      taskHistory: taskHistory,
+      breathRecords: breathRecords,
+      surveyRecords: surveyRecords,
+    );
+
+    final dynamicCoreRisk = _behaviorEngine.calculateDynamicRiskScore(
+      baseRiskScore: baseRisk,
+      smokingTrend: smokingTrend,
+      breathTrend: breathTrend,
+      consecutiveTrend: consecutiveTrend,
+      riskyTriggers: riskyTriggers,
+      riskyHours: riskyHours,
+      learnedWeights: learnedWeights,
+    );
+
+    final personalizedAdjustment = _behaviorEngine.calculatePersonalizedRiskAdjustment(
+      surveyRecords: surveyRecords,
+      breathRecords: breathRecords,
+      latestContext: latestContext,
+      sensorEvents: sensorEvents,
+    );
+
+    final taskAdjustment = _taskOutcomeRiskAdjustment(taskHistory);
+
     final dynamicRisk =
-        (_behaviorEngine.calculateDynamicRiskScore(
-                  baseRiskScore: baseRisk,
-                  smokingTrend: smokingTrend,
-                  breathTrend: breathTrend,
-                  consecutiveTrend: consecutiveTrend,
-                  riskyTriggers: riskyTriggers,
-                  riskyHours: riskyHours,
-                ) +
-                _behaviorEngine.calculatePersonalizedRiskAdjustment(
-                  surveyRecords: surveyRecords,
-                  breathRecords: breathRecords,
-                  latestContext: latestContext,
-                  sensorEvents: sensorEvents,
-                ) +
+        (dynamicCoreRisk +
+                personalizedAdjustment +
                 profileAdjustment +
-                _taskOutcomeRiskAdjustment(taskHistory))
+                taskAdjustment)
             .clamp(0, 100);
 
     final isFirstProfile =
@@ -1254,6 +1279,15 @@ class StorageService {
       predictedTrigger: prediction['nextRiskTrigger']?.toString(),
     );
 
+    final riskExplanation = _behaviorEngine.buildRiskExplanation(
+      baseRisk: baseRisk,
+      dynamicCoreRisk: dynamicCoreRisk,
+      personalizedAdjustment: personalizedAdjustment,
+      profileAdjustment: profileAdjustment,
+      taskAdjustment: taskAdjustment,
+      finalRisk: dynamicRisk,
+    );
+
     final dashboard = _behaviorEngine.buildDashboard(
       riskScore: dynamicRisk,
       records: records,
@@ -1261,6 +1295,8 @@ class StorageService {
       riskyHours: riskyHours,
       todaysTasks: orderedTasks,
       coachCommands: coachCommands,
+      riskExplanation: riskExplanation,
+      learnedWeights: learnedWeights,
       prediction: prediction,
       plan: adaptivePlan,
     );
@@ -1273,6 +1309,8 @@ class StorageService {
       'progressSummary': dashboard.progressSummary,
       'todaysTasks': dashboard.todaysTasks,
       'coachCommands': dashboard.coachCommands,
+      'riskExplanation': dashboard.riskExplanation,
+      'learnedWeights': dashboard.learnedWeights,
       'predictedRiskWindow': dashboard.predictedRiskWindow,
       'predictionConfidence': dashboard.predictionConfidence,
       'predictedTrigger': dashboard.predictedTrigger,

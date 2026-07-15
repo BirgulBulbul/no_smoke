@@ -434,31 +434,111 @@ class BehaviorEngine {
     required String consecutiveTrend,
     required List<String> riskyTriggers,
     required List<String> riskyHours,
+    Map<String, double>? learnedWeights,
   }) {
+    final weights = learnedWeights ?? const <String, double>{};
+    final smokingWeight = weights['smoking'] ?? 1.0;
+    final breathWeight = weights['breath'] ?? 1.0;
+    final consecutiveWeight = weights['consecutive'] ?? 1.0;
+    final triggerWeight = weights['trigger'] ?? 1.0;
+    final hourWeight = weights['hour'] ?? 1.0;
+
     var score = baseRiskScore;
 
     if (smokingTrend == 'Increasing') {
-      score += 8;
+      score += (8 * smokingWeight).round();
     } else if (smokingTrend == 'Decreasing') {
-      score -= 6;
+      score -= (6 * smokingWeight).round();
     }
 
     if (breathTrend == 'Declining') {
-      score += 6;
+      score += (6 * breathWeight).round();
     } else if (breathTrend == 'Improving') {
-      score -= 5;
+      score -= (5 * breathWeight).round();
     }
 
     if (consecutiveTrend == 'trendDeclining') {
-      score += 7;
+      score += (7 * consecutiveWeight).round();
     } else if (consecutiveTrend == 'trendImproving') {
-      score -= 4;
+      score -= (4 * consecutiveWeight).round();
     }
 
-    score += min(riskyTriggers.length, 3) * 2;
-    score += min(riskyHours.length, 2) * 2;
+    score += (min(riskyTriggers.length, 3) * 2 * triggerWeight).round();
+    score += (min(riskyHours.length, 2) * 2 * hourWeight).round();
 
     return score.clamp(0, 100);
+  }
+
+  Map<String, double> learnDynamicWeightsFromRecentHistory({
+    required List<TaskHistory> taskHistory,
+    required List<SurveyRecord> breathRecords,
+    required List<SurveyRecord> surveyRecords,
+  }) {
+    final recentTasks = taskHistory.length > 7
+        ? taskHistory.sublist(taskHistory.length - 7)
+        : taskHistory;
+    final failureCount = recentTasks.where((item) => !item.completed).length;
+    final taskCount = recentTasks.length;
+    final failureRate = taskCount == 0 ? 0.0 : failureCount / taskCount;
+
+    final recentBreath = breathRecords.length > 7
+        ? breathRecords.sublist(breathRecords.length - 7)
+        : breathRecords;
+    final breathValues = recentBreath
+        .map(
+          (item) =>
+              ((item.exhaleTestSeconds + item.inhaleTestSeconds) / 2).toDouble(),
+        )
+        .toList();
+    final breathVolatility = _stdDev(breathValues);
+
+    final recentSurvey = surveyRecords.length > 7
+        ? surveyRecords.sublist(surveyRecords.length - 7)
+        : surveyRecords;
+    final packLevels = recentSurvey
+        .map((item) => _packLevel(item.packsPerDay))
+        .toList();
+    final packSlope = packLevels.length < 2
+        ? 0.0
+        : (packLevels.last - packLevels.first).toDouble();
+
+    final smokingWeight = (1.0 + (packSlope > 0 ? 0.18 : 0.0)).clamp(0.85, 1.35);
+    final breathWeight =
+        (1.0 + ((breathVolatility / 4.0).clamp(0.0, 0.28))).clamp(0.85, 1.35);
+    final consecutiveWeight =
+        (1.0 + ((failureRate - 0.35).clamp(-0.2, 0.3))).clamp(0.85, 1.35);
+    final triggerWeight =
+        (1.0 + ((failureRate - 0.25).clamp(-0.15, 0.25))).clamp(0.85, 1.35);
+    final hourWeight =
+        (1.0 + ((failureRate - 0.30).clamp(-0.15, 0.22))).clamp(0.85, 1.35);
+
+    return {
+      'smoking': smokingWeight,
+      'breath': breathWeight,
+      'consecutive': consecutiveWeight,
+      'trigger': triggerWeight,
+      'hour': hourWeight,
+    };
+  }
+
+  List<String> buildRiskExplanation({
+    required int baseRisk,
+    required int dynamicCoreRisk,
+    required int personalizedAdjustment,
+    required int profileAdjustment,
+    required int taskAdjustment,
+    required int finalRisk,
+  }) {
+    final lines = <String>[];
+
+    lines.add('Baz skor: $baseRisk');
+    lines.add('Davranis/trend etkisi: ${_signed(dynamicCoreRisk - baseRisk)}');
+    lines.add('Nefes + anket kisisel etki: ${_signed(personalizedAdjustment)}');
+    lines.add('Profil etki: ${_signed(profileAdjustment)}');
+    lines.add('Gorev performans etki: ${_signed(taskAdjustment)}');
+    lines.add('Sonuc risk skoru: $finalRisk');
+
+    return lines;
   }
 
   int calculatePersonalizedRiskAdjustment({
@@ -675,6 +755,8 @@ class BehaviorEngine {
     required List<String> riskyHours,
     required List<String> todaysTasks,
     required List<String> coachCommands,
+    required List<String> riskExplanation,
+    required Map<String, double> learnedWeights,
     required Map<String, dynamic> prediction,
     required AdaptivePlan plan,
   }) {
@@ -716,6 +798,8 @@ class BehaviorEngine {
       progressSummary: progressSummary,
       todaysTasks: todaysTasks,
       coachCommands: coachCommands,
+      riskExplanation: riskExplanation,
+      learnedWeights: learnedWeights,
       predictedRiskWindow: prediction['nextRiskWindow'] as String,
       predictionConfidence: prediction['confidence'] as int,
       predictedTrigger: prediction['nextRiskTrigger'] as String,
@@ -1283,5 +1367,12 @@ class BehaviorEngine {
 
     final duration = wakeTotal - sleepTotal;
     return duration < 6 * 60;
+  }
+
+  String _signed(int value) {
+    if (value > 0) {
+      return '+$value';
+    }
+    return '$value';
   }
 }

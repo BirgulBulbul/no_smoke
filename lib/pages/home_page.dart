@@ -69,6 +69,8 @@ class _HomePageState extends State<HomePage> {
   List<String> _riskyHours = const [];
   List<String> _todaysTasks = const [];
   List<String> _coachCommands = const [];
+  List<String> _riskExplanation = const [];
+  Map<String, double> _learnedWeights = const {};
   String _consecutiveSmokingLatestText = '...';
   String _consecutiveSmokingPreviousText = '...';
   String _consecutiveSmokingTrendText = '...';
@@ -506,6 +508,8 @@ class _HomePageState extends State<HomePage> {
       _progressSummaryText = behavior?.progressSummary ?? 'Stable';
       _todaysTasks = behavior?.todaysTasks ?? const [];
       _coachCommands = behavior?.coachCommands ?? const [];
+      _riskExplanation = behavior?.riskExplanation ?? const [];
+      _learnedWeights = behavior?.learnedWeights ?? const {};
       _predictedRiskWindow = behavior?.predictedRiskWindow ?? '...';
       _predictedTrigger = behavior?.predictedTrigger ?? '...';
       _predictionConfidence = behavior?.predictionConfidence ?? 0;
@@ -542,8 +546,31 @@ class _HomePageState extends State<HomePage> {
 
     if (_registrationCompleted) {
       unawaited(_notifyNewTasks());
+      unawaited(_scheduleCoachCommandNotificationsIfNeeded());
       unawaited(_presentMandatoryTaskIfNeeded());
     }
+  }
+
+  Future<void> _scheduleCoachCommandNotificationsIfNeeded() async {
+    if (!_registrationCompleted || _coachCommands.isEmpty) {
+      return;
+    }
+
+    final now = DateTime.now();
+    final signature =
+        '${now.year}-${now.month}-${now.day}|$_predictedRiskWindow|${_coachCommands.join('|')}';
+    final existing = await _storageService.loadSetting(
+      'last_coach_command_signature',
+    );
+    if (existing == signature) {
+      return;
+    }
+
+    await NotificationService.scheduleCoachCommandNotifications(
+      commands: _coachCommands,
+      predictedRiskWindow: _predictedRiskWindow,
+    );
+    await _storageService.saveSetting('last_coach_command_signature', signature);
   }
 
   Future<void> _presentMandatoryTaskIfNeeded() async {
@@ -1338,6 +1365,12 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 6),
             Text('${context.t('weeklyRiskTarget')}: $_weeklyRiskTarget / 100'),
+            if (_learnedWeights.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Ogrenilen agirliklar: ${_formatLearnedWeights(_learnedWeights)}',
+              ),
+            ],
             if (_coachCommands.isNotEmpty) ...[
               const SizedBox(height: 10),
               const Text(
@@ -1349,6 +1382,20 @@ class _HomePageState extends State<HomePage> {
                 (command) => Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Text('- $command'),
+                ),
+              ),
+            ],
+            if (_riskExplanation.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Risk skoru aciklamasi',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              ..._riskExplanation.map(
+                (line) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text('- $line'),
                 ),
               ),
             ],
@@ -1733,5 +1780,30 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+  }
+
+  String _formatLearnedWeights(Map<String, double> weights) {
+    if (weights.isEmpty) {
+      return '-';
+    }
+
+    final orderedKeys = ['smoking', 'breath', 'consecutive', 'trigger', 'hour'];
+    final labels = {
+      'smoking': 'sigara',
+      'breath': 'nefes',
+      'consecutive': 'ardisik',
+      'trigger': 'tetik',
+      'hour': 'saat',
+    };
+
+    final parts = <String>[];
+    for (final key in orderedKeys) {
+      final value = weights[key];
+      if (value == null) {
+        continue;
+      }
+      parts.add('${labels[key]}:${value.toStringAsFixed(2)}');
+    }
+    return parts.join(' • ');
   }
 }
