@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../core/app_texts.dart';
 import '../models/survey_record.dart';
@@ -46,6 +47,7 @@ class _HomePageState extends State<HomePage> {
   bool _mandatoryTaskShown = false;
   bool _weeklySurveyMandatoryShown = false;
   bool _weeklySurveyPromptShownSession = false;
+  bool _criticalNotificationPermissionCheckedSession = false;
   bool _registrationCompleted = false;
   bool _isCompletingRegistration = false;
   String _lastSurveyDateText = '...';
@@ -568,6 +570,10 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (_registrationCompleted) {
+      final permissionReady = await _ensureCriticalNotificationPermissionGate();
+      if (!permissionReady || !mounted) {
+        return;
+      }
       await _ensureWeeklySurveyCadence();
       if (!mounted) {
         return;
@@ -576,6 +582,63 @@ class _HomePageState extends State<HomePage> {
       unawaited(_scheduleCoachCommandNotificationsIfNeeded());
       unawaited(_presentMandatoryTaskIfNeeded());
     }
+  }
+
+  Future<bool> _ensureCriticalNotificationPermissionGate() async {
+    if (_criticalNotificationPermissionCheckedSession) {
+      return true;
+    }
+
+    _criticalNotificationPermissionCheckedSession = true;
+    final granted = await NotificationService.ensureNotificationPermission();
+    if (granted) {
+      return true;
+    }
+
+    if (!mounted) {
+      return false;
+    }
+
+    final action = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Kritik izin gerekli'),
+          content: const Text(
+            'Sigara icmeme komutlarinin arama-benzeri (tam ekran) calismasi icin bildirim ve tam ekran iznini acman gerekiyor.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('retry'),
+              child: const Text('Tekrar dene'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop('settings'),
+              child: const Text('Ayarlari ac'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (action == 'settings') {
+      await openAppSettings();
+    }
+
+    final recheck = await NotificationService.ensureNotificationPermission();
+    if (!recheck && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Tam ekran arama-benzeri komut bildirimi icin izinler acilmadi. Lutfen Ayarlar > Bildirimler bolumunden izin ver.',
+          ),
+        ),
+      );
+      return false;
+    }
+
+    return true;
   }
 
   Future<void> _ensureWeeklySurveyCadence() async {
