@@ -33,7 +33,6 @@ class NotificationService {
   static const String _actionTaskNotNow = 'task_not_now';
   static const String _actionFollowUpDone = 'followup_done';
   static const String _actionFollowUpLater = 'followup_later';
-  static const String _actionSmokedYes = 'smoked_yes';
   static const String _actionSmokedNo = 'smoked_no';
 
   static const String _categoryTaskStart = 'task_start_category';
