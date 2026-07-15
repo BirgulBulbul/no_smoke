@@ -32,15 +32,21 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
   }
 
   Future<void> _continue(BuildContext context, String languageCode) async {
+    // Dili kaydet
     await LanguageService.saveSelectedLanguageCode(languageCode);
-    if (!context.mounted) {
-      return;
-    }
+    if (!context.mounted) return;
+    
+    // Locale'i set et
     NoSmokeApp.setLocale(
       context,
       LanguageService.supportedLanguages[languageCode] ?? const Locale('en'),
     );
+    
+    // Locale güncellemesinin uygulanması için kısa bir bekleme
+    await Future.delayed(const Duration(milliseconds: 150));
+    if (!context.mounted) return;
 
+    // Sonra TrialInfoPage'e git
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => const TrialInfoPage()),

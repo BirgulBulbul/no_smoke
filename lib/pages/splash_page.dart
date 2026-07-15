@@ -26,20 +26,54 @@ class _SplashPageState extends State<SplashPage> {
   }
 
   Future<void> _routeFromSplash() async {
+    // Dil seçimi yapılmış mı kontrol et
     final hasSavedLanguage = await LanguageService.hasSavedLanguageSelection();
-    if (!mounted) {
+    if (!mounted) return;
+
+    // Dil seçimi yapılmışsa, normal akışı izle
+    if (hasSavedLanguage) {
+      final selectedCode = await LanguageService.loadSelectedLanguageCode();
+      if (!mounted) return;
+      
+      NoSmokeApp.setLocale(
+        context,
+        LanguageService.supportedLanguages[selectedCode] ?? const Locale('en'),
+      );
+
+      await Future.delayed(const Duration(milliseconds: 1800));
+      if (!mounted) return;
+
+      _goNext();
       return;
     }
 
-    if (!hasSavedLanguage) {
+    // Dil seçimi yapılmamışsa, cihaz dilini kontrol et
+    final deviceLanguageCode = LanguageService.getDeviceLanguageCode();
+    
+    if (deviceLanguageCode != null) {
+      // Cihaz dili destekleniyor → otomatik seç
+      await LanguageService.saveSelectedLanguageCode(deviceLanguageCode);
+      if (!mounted) return;
+      
+      NoSmokeApp.setLocale(
+        context,
+        LanguageService.supportedLanguages[deviceLanguageCode] ?? const Locale('en'),
+      );
+
+      await Future.delayed(const Duration(milliseconds: 1800));
+      if (!mounted) return;
+
+      _goNext();
+      return;
+    }
+
+    // Cihaz dili desteklenmiyor → dil seçme sayfası açılır
+    if (mounted) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LanguageSelectionPage()),
       );
-      return;
     }
-
-    Timer(const Duration(milliseconds: 1800), _goNext);
   }
 
   Map<String, dynamic> _resolveHomeSeed(List<SurveyRecord> records) {
@@ -75,41 +109,15 @@ class _SplashPageState extends State<SplashPage> {
   }
 
   Future<void> _goNext() async {
-    if (!mounted) {
-      return;
-    }
-
-    final hasSavedLanguage = await LanguageService.hasSavedLanguageSelection();
-
-    if (!mounted) {
-      return;
-    }
-
-    if (!hasSavedLanguage) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LanguageSelectionPage()),
-      );
-      return;
-    }
-
-    final selectedCode = await LanguageService.loadSelectedLanguageCode();
-    if (!mounted) {
-      return;
-    }
-    NoSmokeApp.setLocale(
-      context,
-      LanguageService.supportedLanguages[selectedCode] ?? const Locale('en'),
-    );
+    if (!mounted) return;
 
     final storage = StorageService();
     final records = await storage.loadSurveyHistory();
     final hasInitialSetup = records.any((record) => record.type == 'initial');
 
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
+    // İlk kez kurulum yapılmamışsa TrialInfoPage'e git
     if (!hasInitialSetup) {
       Navigator.pushReplacement(
         context,
@@ -118,6 +126,7 @@ class _SplashPageState extends State<SplashPage> {
       return;
     }
 
+    // Setup yapılmışsa BreathTestPage'e git
     final seed = _resolveHomeSeed(records);
     Navigator.pushReplacement(
       context,

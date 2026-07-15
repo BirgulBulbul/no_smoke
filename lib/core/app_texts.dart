@@ -45,6 +45,14 @@ class AppTexts {
     'hello': 'Merhaba',
     'weeklySavePrompt': 'Bu haftaki durumunuzu kaydedin.',
     'saveErrorRetry': 'Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.',
+    'smokeFreeStreak': 'Sigara İçmeme Serisi',
+    'healthMetrics': 'Sağlık Metrikleri',
+    'noBreathTestsYet': 'Henüz nefes testi kaydı yok.',
+    'longitudinalAnalysis': 'Zaman Serisine Dayalı Analiz',
+    'statistics': 'İstatistikler',
+    'recentTests': 'Son Testler',
+    'exportComingSoon': 'PDF dışa aktarma yakında geliyor.',
+    'exportPDF': 'PDF Olarak Dışa Aktar',
   };
 
   // English - Full translation
@@ -91,6 +99,14 @@ class AppTexts {
     'hello': 'Hello',
     'weeklySavePrompt': 'Save your status for this week.',
     'saveErrorRetry': 'An error occurred while saving. Please try again.',
+    'smokeFreeStreak': 'Smoke-Free Streak',
+    'healthMetrics': 'Health Metrics',
+    'noBreathTestsYet': 'No breath test records yet.',
+    'longitudinalAnalysis': 'Longitudinal Analysis',
+    'statistics': 'Statistics',
+    'recentTests': 'Recent Tests',
+    'exportComingSoon': 'PDF export coming soon.',
+    'exportPDF': 'Export as PDF',
   };
 
   // All 40 languages - each inherits from EN, with top keys translated

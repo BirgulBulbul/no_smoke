@@ -13,6 +13,7 @@ class SurveyRecord {
   final String? taskResult;
   final String? consecutiveSmokingHabit;
   final String? consecutiveSmokingCount;
+  final DateTime? quitDate; // Sigara bırakma başlangıç tarihi (ilk anketten)
 
   const SurveyRecord({
     required this.id,
@@ -29,6 +30,7 @@ class SurveyRecord {
     this.taskResult,
     this.consecutiveSmokingHabit,
     this.consecutiveSmokingCount,
+    this.quitDate,
   });
 
   Map<String, dynamic> toJson() {
@@ -48,6 +50,7 @@ class SurveyRecord {
       'taskResult': taskResult,
       'consecutiveSmokingHabit': consecutiveSmokingHabit,
       'consecutiveSmokingCount': consecutiveSmokingCount,
+      'quitDate': quitDate?.toIso8601String(),
     };
   }
 
@@ -58,7 +61,7 @@ class SurveyRecord {
       type: json['type'] as String? ?? 'initial',
       title: json['title'] as String? ?? 'Anket',
       name: json['name'] as String? ?? '',
-        packsPerDay: (json['packsPerDay'] as String?) ??
+      packsPerDay: (json['packsPerDay'] as String?) ??
           _legacyCigarettesToPacks((json['dailyCigarettes'] as num?)?.toInt()),
       exhaleTestSeconds: (json['exhaleTestSeconds'] as num?)?.toInt() ?? 0,
       inhaleTestSeconds: (json['inhaleTestSeconds'] as num?)?.toInt() ?? 0,
@@ -68,6 +71,7 @@ class SurveyRecord {
       taskResult: json['taskResult'] as String?,
       consecutiveSmokingHabit: json['consecutiveSmokingHabit'] as String?,
       consecutiveSmokingCount: json['consecutiveSmokingCount'] as String?,
+      quitDate: json['quitDate'] != null ? DateTime.parse(json['quitDate'] as String) : null,
     );
   }
 

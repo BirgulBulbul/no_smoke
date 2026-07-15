@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:ui';
 
 import 'storage_service.dart';
 
@@ -122,5 +122,24 @@ class LanguageService {
         : 'en';
     await prefs.setString(_languageCodeKey, code);
     await StorageService().saveLanguageSelectionHistory(code);
+  }
+
+  /// Cihazın dil ayarını al (dil kodu döndür veya null)
+  static String? getDeviceLanguageCode() {
+    final locale = PlatformDispatcher.instance.locale;
+    final deviceCode = locale.languageCode.toLowerCase();
+    
+    // Eğer desteklenen dillerden biriyse, kodunu döndür
+    if (supportedLanguages.containsKey(deviceCode)) {
+      return deviceCode;
+    }
+    
+    // Desteklenmiyorsa null
+    return null;
+  }
+
+  /// Belirtilen dil kodunun desteklenip desteklenmediğini kontrol et
+  static bool isLanguageSupported(String languageCode) {
+    return supportedLanguages.containsKey(languageCode);
   }
 }

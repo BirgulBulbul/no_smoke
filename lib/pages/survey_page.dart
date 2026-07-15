@@ -331,6 +331,7 @@ class _SurveyPageState extends State<SurveyPage> {
       consecutiveSmokingCount: consecutiveSmokingHabit == 'Evet'
           ? consecutiveSmokingCount
           : null,
+      quitDate: DateTime.now(), // Sigara bırakma başlangıcı
     );
 
     try {

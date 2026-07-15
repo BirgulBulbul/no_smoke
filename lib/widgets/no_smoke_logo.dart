@@ -25,7 +25,7 @@ class NoSmokeLogo extends StatelessWidget {
             height: logoSize,
             child: SvgPicture.asset(
               'assets/images/no_smoke_logo.svg',
-              fit: BoxFit.contain,
+              fit: BoxFit.cover,
               colorFilter: iconColor == null
                   ? null
                   : ColorFilter.mode(iconColor!, BlendMode.srcIn),

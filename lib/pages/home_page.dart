@@ -6,6 +6,7 @@ import '../core/app_texts.dart';
 import '../models/survey_record.dart';
 import '../models/user_profile_snapshot.dart';
 import '../pages/breath_test_page.dart';
+import '../pages/health_metrics_page.dart';
 import '../pages/mandatory_task_page.dart';
 import '../pages/personal_progress_page.dart';
 import '../pages/protocol_violations_page.dart';
@@ -101,6 +102,7 @@ class _HomePageState extends State<HomePage> {
   double _weeklyAverage = 0;
   double _monthlyAverage = 0;
   double _dailyAverage = 0;
+  int _smokeFreeDays = 0; // Kaç gündür sigara içmedi
 
   @override
   void initState() {
@@ -464,6 +466,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadHomeMetrics() async {
+    // İlk anketin quit date'ini al ve smoke-free days hesapla
+    final initialRecord = await _storageService.loadSurveyHistory()
+        .then((records) => records.where((r) => r.type == 'initial').firstOrNull);
+    int smokeFreeDays = 0;
+    if (initialRecord?.quitDate != null) {
+      smokeFreeDays = DateTime.now().difference(initialRecord!.quitDate!).inDays;
+    }
+    
     final registrationCompleted = await _storageService
         .loadInitialRegistrationCompleted();
     final notificationContextReason = await _storageService.loadSetting(
@@ -496,6 +506,7 @@ class _HomePageState extends State<HomePage> {
     final pendingFollowUps = await _storageService.loadPendingTaskFollowUps();
     if (!mounted) return;
     setState(() {
+      _smokeFreeDays = smokeFreeDays;
       _registrationCompleted = registrationCompleted;
       _lastSurveyDateText = lastDate == null
           ? 'noRecordYet'
@@ -1808,7 +1819,62 @@ class _HomePageState extends State<HomePage> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
+              // Daily Streak Counter - Büyük ve göze çarpıcı
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.teal.withAlpha((255 * 0.2).toInt()),
+                  border: Border.all(color: Colors.teal, width: 2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '🔥 ${context.t('smokeFreeStreak')}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.teal,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '$_smokeFreeDays',
+                      style: const TextStyle(
+                        fontSize: 48,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal,
+                      ),
+                    ),
+                    Text(
+                      _smokeFreeDays == 1 ? 'gün' : 'gün',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        color: Colors.teal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Health Metrics Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => HealthMetricsPage(name: widget.name),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.show_chart),
+                  label: Text(context.t('healthMetrics')),
+                ),
+              ),
+              const SizedBox(height: 24),
               Text(
                 '${context.t('riskLevel')}: ${_localizedRiskLabel()}',
                 style: const TextStyle(fontSize: 18),
