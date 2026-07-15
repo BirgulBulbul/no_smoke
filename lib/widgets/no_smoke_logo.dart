@@ -16,34 +16,36 @@ class NoSmokeLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final logoSize = size.clamp(48, 240).toDouble();
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: logoSize,
-          height: logoSize,
-          child: SvgPicture.asset(
-            'assets/images/no_smoke_logo.svg',
-            fit: BoxFit.contain,
-            colorFilter: iconColor == null
-                ? null
-                : ColorFilter.mode(iconColor!, BlendMode.srcIn),
-            placeholderBuilder: (_) => _buildPlaceholder(logoSize),
-          ),
-        ),
-        if (showLabel) ...[
-          const SizedBox(height: 10),
-          Text(
-            'NO SMOKE',
-            style: TextStyle(
-              fontSize: (logoSize * 0.17).clamp(14, 28).toDouble(),
-              fontWeight: FontWeight.w800,
-              letterSpacing: 2.2,
-              color: Colors.white,
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: logoSize,
+            height: logoSize,
+            child: SvgPicture.asset(
+              'assets/images/no_smoke_logo.svg',
+              fit: BoxFit.contain,
+              colorFilter: iconColor == null
+                  ? null
+                  : ColorFilter.mode(iconColor!, BlendMode.srcIn),
+              placeholderBuilder: (_) => _buildPlaceholder(logoSize),
             ),
           ),
+          if (showLabel) ...[
+            const SizedBox(height: 10),
+            Text(
+              'NO SMOKE',
+              style: TextStyle(
+                fontSize: (logoSize * 0.17).clamp(14, 28).toDouble(),
+                fontWeight: FontWeight.w800,
+                letterSpacing: 2.2,
+                color: Colors.white,
+              ),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 

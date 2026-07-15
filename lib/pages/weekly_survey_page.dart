@@ -1725,7 +1725,7 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _durationBarrierPreference,
+              initialValue: _durationBarrierPreference,
               decoration: const InputDecoration(
                 labelText: 'Süre bariyerlerini nasıl buluyorsun?',
                 border: OutlineInputBorder(),
@@ -1757,7 +1757,7 @@ class _WeeklySurveyPageState extends State<WeeklySurveyPage> {
             const SizedBox(height: 12),
             if (_durationBarrierPreference != 'Istemiyorum')
               DropdownButtonFormField<String>(
-                value: _durationBarrierFrequencyPreference,
+                initialValue: _durationBarrierFrequencyPreference,
                 decoration: const InputDecoration(
                   labelText: 'Süre bariyeri sıklığı nasıl olmalı?',
                   border: OutlineInputBorder(),
