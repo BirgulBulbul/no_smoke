@@ -8,6 +8,7 @@ import '../models/user_profile_snapshot.dart';
 import '../pages/mandatory_task_page.dart';
 import '../pages/protocol_violations_page.dart';
 import '../pages/task_follow_up_page.dart';
+import '../pages/weekly_survey_page.dart';
 import '../services/discipline_protocol_service.dart';
 import '../services/notification_service.dart';
 import '../services/permission_service.dart';
@@ -43,6 +44,8 @@ class _HomePageState extends State<HomePage> {
   StreamSubscription<Map<String, String>>? _taskActionSubscription;
   List<Map<String, dynamic>> _pendingFollowUps = const [];
   bool _mandatoryTaskShown = false;
+  bool _weeklySurveyMandatoryShown = false;
+  bool _weeklySurveyPromptShownSession = false;
   bool _registrationCompleted = false;
   bool _isCompletingRegistration = false;
   String _lastSurveyDateText = '...';
@@ -557,10 +560,138 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (_registrationCompleted) {
+      await _ensureWeeklySurveyCadence();
+      if (!mounted) {
+        return;
+      }
       unawaited(_notifyNewTasks());
       unawaited(_scheduleCoachCommandNotificationsIfNeeded());
       unawaited(_presentMandatoryTaskIfNeeded());
     }
+  }
+
+  Future<void> _ensureWeeklySurveyCadence() async {
+    if (!_registrationCompleted || !mounted) {
+      return;
+    }
+
+    final dueAt = await _storageService.loadWeeklySurveyDueDate();
+    if (dueAt != null) {
+      await NotificationService.scheduleWeeklySurveyDueReminder(dueAt: dueAt);
+    }
+
+    final overdue = await _storageService.isWeeklySurveyOverdue();
+    if (!mounted) {
+      return;
+    }
+
+    if (overdue) {
+      if (_weeklySurveyMandatoryShown) {
+        return;
+      }
+      _weeklySurveyMandatoryShown = true;
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Haftalik anket zorunlu'),
+            content: const Text(
+              'Risk skorunun guncel kalmasi icin en az 7 gunde bir haftalik anket doldurmalisin.',
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Ankete git'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      await Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WeeklySurveyPage(
+            navigateToHomeAfterSave: true,
+            nameSeed: widget.name,
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (_weeklySurveyPromptShownSession) {
+      return;
+    }
+
+    final lastPromptRaw = await _storageService.loadSetting(
+      'last_weekly_survey_prompt_at',
+    );
+    final now = DateTime.now();
+    var promptedToday = false;
+    if (lastPromptRaw != null && lastPromptRaw.trim().isNotEmpty) {
+      final parsed = DateTime.tryParse(lastPromptRaw);
+      if (parsed != null &&
+          parsed.year == now.year &&
+          parsed.month == now.month &&
+          parsed.day == now.day) {
+        promptedToday = true;
+      }
+    }
+
+    if (promptedToday) {
+      return;
+    }
+
+    _weeklySurveyPromptShownSession = true;
+    await _storageService.saveSetting(
+      'last_weekly_survey_prompt_at',
+      now.toIso8601String(),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    final wantsWeeklySurvey = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(context.t('weeklySurvey')),
+          content: Text(context.t('weeklySurveyPromptAsk')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(context.t('no')),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(context.t('yes')),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || wantsWeeklySurvey != true) {
+      return;
+    }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WeeklySurveyPage(
+          navigateToHomeAfterSave: true,
+          nameSeed: widget.name,
+        ),
+      ),
+    );
   }
 
   Future<void> _scheduleCoachCommandNotificationsIfNeeded() async {

@@ -779,6 +779,35 @@ class StorageService {
     return DateTime.parse(value);
   }
 
+  Future<DateTime?> loadLastWeeklyOrInitialSurveyDate() async {
+    final records = await loadSurveyHistory();
+    for (final record in records.reversed) {
+      if (record.type == 'weekly' || record.type == 'initial') {
+        return record.completedAt;
+      }
+    }
+    return null;
+  }
+
+  Future<bool> isWeeklySurveyOverdue({Duration maxAge = const Duration(days: 7)}) async {
+    final lastSurveyDate = await loadLastWeeklyOrInitialSurveyDate();
+    if (lastSurveyDate == null) {
+      return false;
+    }
+    final elapsed = DateTime.now().difference(lastSurveyDate);
+    return elapsed >= maxAge;
+  }
+
+  Future<DateTime?> loadWeeklySurveyDueDate({
+    Duration maxAge = const Duration(days: 7),
+  }) async {
+    final lastSurveyDate = await loadLastWeeklyOrInitialSurveyDate();
+    if (lastSurveyDate == null) {
+      return null;
+    }
+    return lastSurveyDate.add(maxAge);
+  }
+
   Future<void> saveSleepTime(String sleepTime) async {
     await saveSetting('sleep_time', sleepTime);
   }

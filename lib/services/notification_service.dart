@@ -28,6 +28,7 @@ class NotificationService {
   static const String _typeBreath = 'breath';
   static const String _typeTaskStart = 'task_start';
   static const String _typeTaskFollowUp = 'task_followup';
+  static const String _typeWeeklySurvey = 'weekly_survey';
 
   static const String _actionTaskDone = 'task_done';
   static const String _actionTaskNotNow = 'task_not_now';
@@ -41,6 +42,8 @@ class NotificationService {
   static const String _taskFollowUpChannelId = 'task_followup_channel_v5';
   static const String _taskEscalationChannelId = 'task_escalation_channel_v1';
   static const String _breathReminderChannelId = 'breath_reminder_channel_v3';
+  static const String _weeklySurveyChannelId = 'weekly_survey_channel_v1';
+  static const int _weeklySurveyNotificationId = 700001;
   static const int _notificationTimeoutMs = 15000;
   static const Duration _unansweredReminderDelay = Duration(minutes: 10);
   static final Int32List _insistentFlag = Int32List.fromList(<int>[4]);
@@ -257,6 +260,10 @@ class NotificationService {
           context,
         ).push(MaterialPageRoute(builder: (_) => const BreathTestPage()));
       }
+      return;
+    }
+
+    if (type == _typeWeeklySurvey) {
       return;
     }
 
@@ -706,6 +713,50 @@ class NotificationService {
     );
   }
 
+  static Future<void> scheduleWeeklySurveyDueReminder({
+    required DateTime dueAt,
+    bool forceImmediateIfOverdue = true,
+  }) async {
+    final scheduleMode = await _resolveAndroidScheduleMode();
+    final code = await LanguageService.loadSelectedLanguageCode();
+    final now = tz.TZDateTime.now(tz.local);
+    var fireAt = tz.TZDateTime.from(dueAt, tz.local);
+    if (!fireAt.isAfter(now)) {
+      if (!forceImmediateIfOverdue) {
+        return;
+      }
+      fireAt = now.add(const Duration(minutes: 1));
+    }
+
+    await _plugin.cancel(_weeklySurveyNotificationId);
+    await _plugin.zonedSchedule(
+      _weeklySurveyNotificationId,
+      _text(code, 'weeklySurveyReminderTitle'),
+      _text(code, 'weeklySurveyReminderBody'),
+      fireAt,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _weeklySurveyChannelId,
+          'Haftalik anket hatirlatici',
+          importance: Importance.max,
+          priority: Priority.high,
+          playSound: true,
+          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          category: AndroidNotificationCategory.reminder,
+        ),
+        iOS: DarwinNotificationDetails(presentSound: true),
+      ),
+      androidScheduleMode: scheduleMode,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      payload: jsonEncode({'type': _typeWeeklySurvey}),
+    );
+  }
+
+  static Future<void> cancelWeeklySurveyReminder() async {
+    await _plugin.cancel(_weeklySurveyNotificationId);
+  }
+
   static Future<void> showTaskTimerStartedNotification({
     required String taskTitle,
     required Duration duration,
@@ -856,6 +907,9 @@ class NotificationService {
           '15 saniye icinde yanit alinmadi. 10 dakika sonra gorev tekrarlanacak:',
       'taskTimerDuration': 'Sayaç',
       'minutesShort': 'dakika',
+      'weeklySurveyReminderTitle': 'Haftalik anket zamani',
+      'weeklySurveyReminderBody':
+          'Risk skorunu guncellemek icin haftalik anketi doldurman gerekiyor.',
     };
 
     const en = <String, String>{
@@ -885,6 +939,9 @@ class NotificationService {
           'No response in 15 seconds. Task will repeat after 10 minutes:',
       'taskTimerDuration': 'Timer',
       'minutesShort': 'minutes',
+      'weeklySurveyReminderTitle': 'Weekly survey due',
+      'weeklySurveyReminderBody':
+          'Please complete the weekly survey to refresh your risk score.',
     };
 
     final map = code == 'tr' ? tr : en;
