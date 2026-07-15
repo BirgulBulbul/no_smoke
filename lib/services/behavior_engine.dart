@@ -469,6 +469,142 @@ class BehaviorEngine {
     return score.clamp(0, 100);
   }
 
+  Map<String, dynamic> evaluateWeeklySurveyRisk(
+    Map<String, dynamic>? weeklyPayload,
+  ) {
+    if (weeklyPayload == null || weeklyPayload.isEmpty) {
+      return {
+        'weeklyRiskScore': 40,
+        'weeklyRiskLevel': 'medium',
+        'recommendedMode': 'balanced',
+        'topRiskDrivers': <String>[],
+      };
+    }
+
+    final avgCigs = _toInt(weeklyPayload['avgCigarettesPerDay']);
+    final delta = (weeklyPayload['deltaVsLastWeek']?.toString() ?? 'same')
+        .toLowerCase();
+    final lapseCount = _toInt(weeklyPayload['lapseCount']);
+    final motivation = _toInt(weeklyPayload['motivation']);
+    final selfEfficacy = _toInt(weeklyPayload['selfEfficacy']);
+    final alcoholDays = _toInt(weeklyPayload['alcoholDays']);
+    final socialDays = _toInt(weeklyPayload['socialSmokingContextDays']);
+
+    final withdrawal =
+        weeklyPayload['withdrawal'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final withdrawalSum =
+        _toInt(withdrawal['irritability']) +
+        _toInt(withdrawal['anxiety']) +
+        _toInt(withdrawal['sleepProblem']) +
+        _toInt(withdrawal['concentrationProblem']) +
+        _toInt(withdrawal['appetiteIncrease']);
+
+    final trigger =
+        weeklyPayload['triggerExposureDays'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final triggerSum =
+        _toInt(trigger['coffee']) +
+        _toInt(trigger['meal']) +
+        _toInt(trigger['driving']) +
+        _toInt(trigger['stress']) +
+        _toInt(trigger['phone']) +
+        _toInt(trigger['social']) +
+        _toInt(trigger['alcohol']);
+
+    final task =
+        weeklyPayload['task'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final treatment =
+        weeklyPayload['treatment'] as Map<String, dynamic>? ??
+        const <String, dynamic>{};
+    final completion = _toInt(task['weeklyCompletionRate']);
+    final adherence = _toInt(treatment['adherence']);
+
+    var c = _consumptionScore(avgCigs);
+    if (delta == 'increased') {
+      c += 10;
+    } else if (delta == 'decreased') {
+      c -= 10;
+    }
+    c = c.clamp(0, 100);
+
+    final l = (lapseCount * 15).clamp(0, 100);
+    final w = ((withdrawalSum / 15) * 100).round().clamp(0, 100);
+    var t = ((triggerSum / 49) * 100).round();
+    if (_toInt(trigger['stress']) >= 5) {
+      t += 10;
+    }
+    if (_toInt(trigger['alcohol']) >= 3) {
+      t += 10;
+    }
+    t = t.clamp(0, 100);
+
+    final a = (alcoholDays * 8 + socialDays * 6).clamp(0, 100);
+    final m = ((10 - motivation).clamp(0, 10) * 10).clamp(0, 100);
+    final s = ((10 - selfEfficacy).clamp(0, 10) * 10).clamp(0, 100);
+    final p =
+        (100 - ((0.6 * completion * 10) + (0.4 * adherence * 10)))
+            .round()
+            .clamp(0, 100);
+
+    var weeklyRiskScore = (0.22 * c +
+            0.18 * l +
+            0.18 * w +
+            0.14 * t +
+            0.08 * a +
+            0.08 * m +
+            0.06 * s +
+            0.06 * p)
+        .round()
+        .clamp(0, 100);
+
+    if (lapseCount >= 3 && _toInt(weeklyPayload['cravingMax']) >= 8) {
+      weeklyRiskScore = (weeklyRiskScore + 12).clamp(0, 100);
+    }
+    if (lapseCount == 0 && selfEfficacy >= 8 && completion >= 8) {
+      weeklyRiskScore = (weeklyRiskScore - 8).clamp(0, 100);
+    }
+
+    final weightedDrivers = <MapEntry<String, int>>[
+      MapEntry('Tuketim', c),
+      MapEntry('Kayma', l),
+      MapEntry('Yoksunluk', w),
+      MapEntry('Tetikleyici', t),
+      MapEntry('Alkol/Sosyal', a),
+      MapEntry('Motivasyon dusuklugu', m),
+      MapEntry('Oz yeterlilik dusuklugu', s),
+      MapEntry('Plan uyumsuzlugu', p),
+    ]
+      ..sort((x, y) => y.value.compareTo(x.value));
+
+    final topDrivers = weightedDrivers
+        .take(3)
+        .map((entry) => '${entry.key}: ${entry.value}')
+        .toList();
+
+    final level = weeklyRiskScore >= 75
+        ? 'critical'
+        : weeklyRiskScore >= 50
+        ? 'high'
+        : weeklyRiskScore >= 25
+        ? 'medium'
+        : 'low';
+
+    final mode = weeklyRiskScore >= 65 || lapseCount >= 2 || _toInt(weeklyPayload['cravingMax']) >= 8
+        ? 'aggressive'
+        : (weeklyRiskScore < 40 && lapseCount == 0 && completion >= 7)
+        ? 'protective'
+        : 'balanced';
+
+    return {
+      'weeklyRiskScore': weeklyRiskScore,
+      'weeklyRiskLevel': level,
+      'recommendedMode': mode,
+      'topRiskDrivers': topDrivers,
+    };
+  }
+
   Map<String, double> learnDynamicWeightsFromRecentHistory({
     required List<TaskHistory> taskHistory,
     required List<SurveyRecord> breathRecords,
@@ -758,6 +894,9 @@ class BehaviorEngine {
     required Map<String, double> commandSuccessScores,
     required Map<String, double> commandCategoryScores,
     required String commandMixMode,
+    required int weeklySurveyRiskScore,
+    required String weeklySurveyRiskLevel,
+    required List<String> weeklyTopRiskDrivers,
     required List<String> riskExplanation,
     required Map<String, double> learnedWeights,
     required Map<String, dynamic> prediction,
@@ -804,6 +943,9 @@ class BehaviorEngine {
       commandSuccessScores: commandSuccessScores,
       commandCategoryScores: commandCategoryScores,
       commandMixMode: commandMixMode,
+      weeklySurveyRiskScore: weeklySurveyRiskScore,
+      weeklySurveyRiskLevel: weeklySurveyRiskLevel,
+      weeklyTopRiskDrivers: weeklyTopRiskDrivers,
       riskExplanation: riskExplanation,
       learnedWeights: learnedWeights,
       predictedRiskWindow: prediction['nextRiskWindow'] as String,
@@ -1380,5 +1522,34 @@ class BehaviorEngine {
       return '+$value';
     }
     return '$value';
+  }
+
+  int _consumptionScore(int avgCigarettesPerDay) {
+    if (avgCigarettesPerDay <= 0) {
+      return 0;
+    }
+    if (avgCigarettesPerDay <= 5) {
+      return 20;
+    }
+    if (avgCigarettesPerDay <= 10) {
+      return 40;
+    }
+    if (avgCigarettesPerDay <= 20) {
+      return 65;
+    }
+    return 85;
+  }
+
+  int _toInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value) ?? 0;
+    }
+    return 0;
   }
 }

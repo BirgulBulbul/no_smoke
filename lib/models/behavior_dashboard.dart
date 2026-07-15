@@ -13,6 +13,9 @@ class BehaviorDashboard {
   final Map<String, double> commandSuccessScores;
   final Map<String, double> commandCategoryScores;
   final String commandMixMode;
+  final int weeklySurveyRiskScore;
+  final String weeklySurveyRiskLevel;
+  final List<String> weeklyTopRiskDrivers;
   final List<String> riskExplanation;
   final Map<String, double> learnedWeights;
   final String predictedRiskWindow;
@@ -33,6 +36,9 @@ class BehaviorDashboard {
     required this.commandSuccessScores,
     required this.commandCategoryScores,
     required this.commandMixMode,
+    required this.weeklySurveyRiskScore,
+    required this.weeklySurveyRiskLevel,
+    required this.weeklyTopRiskDrivers,
     required this.riskExplanation,
     required this.learnedWeights,
     required this.predictedRiskWindow,

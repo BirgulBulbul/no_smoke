@@ -72,6 +72,9 @@ class _HomePageState extends State<HomePage> {
   Map<String, double> _commandSuccessScores = const {};
   Map<String, double> _commandCategoryScores = const {};
   String _commandMixMode = 'balanced';
+  int _weeklySurveyRiskScore = 40;
+  String _weeklySurveyRiskLevel = 'medium';
+  List<String> _weeklyTopRiskDrivers = const [];
   List<String> _riskExplanation = const [];
   Map<String, double> _learnedWeights = const {};
   String _consecutiveSmokingLatestText = '...';
@@ -514,6 +517,9 @@ class _HomePageState extends State<HomePage> {
       _commandSuccessScores = behavior?.commandSuccessScores ?? const {};
       _commandCategoryScores = behavior?.commandCategoryScores ?? const {};
       _commandMixMode = behavior?.commandMixMode ?? 'balanced';
+      _weeklySurveyRiskScore = behavior?.weeklySurveyRiskScore ?? 40;
+      _weeklySurveyRiskLevel = behavior?.weeklySurveyRiskLevel ?? 'medium';
+      _weeklyTopRiskDrivers = behavior?.weeklyTopRiskDrivers ?? const [];
       _riskExplanation = behavior?.riskExplanation ?? const [];
       _learnedWeights = behavior?.learnedWeights ?? const {};
       _predictedRiskWindow = behavior?.predictedRiskWindow ?? '...';
@@ -1371,6 +1377,16 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 6),
             Text('${context.t('weeklyRiskTarget')}: $_weeklyRiskTarget / 100'),
+            const SizedBox(height: 6),
+            Text(
+              'Haftalik anket riski: $_weeklySurveyRiskScore/100 (${_weeklySurveyRiskLevel.toUpperCase()})',
+            ),
+            if (_weeklyTopRiskDrivers.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Haftalik ust risk etkenleri: ${_weeklyTopRiskDrivers.join(' | ')}',
+              ),
+            ],
             const SizedBox(height: 6),
             Row(
               children: [

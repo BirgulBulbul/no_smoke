@@ -119,9 +119,11 @@ class StorageService {
         workStart TEXT,
         workEnd TEXT,
         workplaceSmokingRule TEXT,
+        weeklyJson TEXT,
         createdAt TEXT NOT NULL
       )
     ''');
+    await _ensureTableColumn(db, _surveyDetailsTable, 'weeklyJson', 'TEXT');
   }
 
   Future<void> _ensureProfileSnapshotTable(Database db) async {
@@ -301,6 +303,7 @@ class StorageService {
     String? workStart,
     String? workEnd,
     String? workplaceSmokingRule,
+    Map<String, dynamic>? weeklyPayload,
   }) async {
     try {
       final db = await database;
@@ -318,6 +321,7 @@ class StorageService {
         'workStart': workStart,
         'workEnd': workEnd,
         'workplaceSmokingRule': workplaceSmokingRule,
+        'weeklyJson': weeklyPayload == null ? null : jsonEncode(weeklyPayload),
         'createdAt': DateTime.now().toIso8601String(),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
       await markBehaviorDirty();
@@ -358,11 +362,15 @@ class StorageService {
     for (final row in rows) {
       final recordId = row['recordId'] as String;
       final healthRaw = row['healthJson'] as String?;
+      final weeklyRaw = row['weeklyJson'] as String?;
       final healthConditions = healthRaw == null || healthRaw.isEmpty
           ? <String>[]
           : (jsonDecode(healthRaw) as List<dynamic>)
                 .map((item) => item.toString())
                 .toList();
+      final weeklyPayload = weeklyRaw == null || weeklyRaw.isEmpty
+          ? <String, dynamic>{}
+          : (jsonDecode(weeklyRaw) as Map<String, dynamic>);
 
       result[recordId] = {
         'profession': row['profession'] as String?,
@@ -376,6 +384,7 @@ class StorageService {
         'stressLevel': row['stressLevel'] as String?,
         'quitReason': row['quitReason'] as String?,
         'healthConditions': healthConditions,
+        'weeklyPayload': weeklyPayload,
       };
     }
 
@@ -860,6 +869,14 @@ class StorageService {
                   ),
                 ),
         commandMixMode: data['commandMixMode']?.toString() ?? 'balanced',
+          weeklySurveyRiskScore:
+            (data['weeklySurveyRiskScore'] as num?)?.toInt() ?? 40,
+          weeklySurveyRiskLevel:
+            data['weeklySurveyRiskLevel']?.toString() ?? 'medium',
+          weeklyTopRiskDrivers:
+            (data['weeklyTopRiskDrivers'] as List<dynamic>? ?? const [])
+              .map((item) => item.toString())
+              .toList(),
         riskExplanation:
             (data['riskExplanation'] as List<dynamic>? ?? const [])
                 .map((item) => item.toString())
@@ -1220,12 +1237,47 @@ class StorageService {
 
     final taskAdjustment = _taskOutcomeRiskAdjustment(taskHistory);
 
-    final dynamicRisk =
+    final preWeeklyRisk =
         (dynamicCoreRisk +
                 personalizedAdjustment +
                 profileAdjustment +
                 taskAdjustment)
             .clamp(0, 100);
+
+    final weeklyPayload =
+      (latestContext?['weeklyPayload'] as Map<String, dynamic>?) ??
+      const <String, dynamic>{};
+    final weeklyEvaluation = _behaviorEngine.evaluateWeeklySurveyRisk(
+      weeklyPayload,
+    );
+    final weeklyRiskScore =
+      (weeklyEvaluation['weeklyRiskScore'] as num?)?.toInt() ?? 40;
+    final weeklyRiskLevel =
+      weeklyEvaluation['weeklyRiskLevel']?.toString() ?? 'medium';
+    final weeklyTopRiskDrivers =
+      (weeklyEvaluation['topRiskDrivers'] as List<dynamic>? ?? const [])
+        .map((item) => item.toString())
+        .toList();
+
+    var dynamicRisk =
+      ((preWeeklyRisk * 0.7) + (weeklyRiskScore * 0.3)).round();
+    final lapseCount =
+      (weeklyPayload['lapseCount'] as num?)?.toInt() ?? 0;
+    final cravingMax =
+      (weeklyPayload['cravingMax'] as num?)?.toInt() ?? 0;
+    final selfEfficacy =
+      (weeklyPayload['selfEfficacy'] as num?)?.toInt() ?? 0;
+    final completionRate =
+      ((weeklyPayload['task'] as Map<String, dynamic>?)?['weeklyCompletionRate']
+          as num?)
+        ?.toInt() ??
+      0;
+    if (lapseCount >= 3 && cravingMax >= 8) {
+      dynamicRisk = (dynamicRisk + 12).clamp(0, 100).toInt();
+    }
+    if (lapseCount == 0 && selfEfficacy >= 8 && completionRate >= 8) {
+      dynamicRisk = (dynamicRisk - 8).clamp(0, 100).toInt();
+    }
 
     final isFirstProfile =
         existingSnapshot == null &&
@@ -1337,6 +1389,7 @@ class StorageService {
       taskAdjustment: taskAdjustment,
       finalRisk: dynamicRisk,
     );
+    riskExplanation.add('Haftalik anket skoru: $weeklyRiskScore ($weeklyRiskLevel)');
     riskExplanation.add('Komut dengeleme modu: $commandMixMode');
 
     final dashboard = _behaviorEngine.buildDashboard(
@@ -1349,6 +1402,9 @@ class StorageService {
       commandSuccessScores: commandSuccessScores,
       commandCategoryScores: commandCategoryScores,
       commandMixMode: commandMixMode,
+      weeklySurveyRiskScore: weeklyRiskScore,
+      weeklySurveyRiskLevel: weeklyRiskLevel,
+      weeklyTopRiskDrivers: weeklyTopRiskDrivers,
       riskExplanation: riskExplanation,
       learnedWeights: learnedWeights,
       prediction: prediction,
@@ -1366,6 +1422,9 @@ class StorageService {
       'commandSuccessScores': dashboard.commandSuccessScores,
       'commandCategoryScores': dashboard.commandCategoryScores,
       'commandMixMode': dashboard.commandMixMode,
+      'weeklySurveyRiskScore': dashboard.weeklySurveyRiskScore,
+      'weeklySurveyRiskLevel': dashboard.weeklySurveyRiskLevel,
+      'weeklyTopRiskDrivers': dashboard.weeklyTopRiskDrivers,
       'riskExplanation': dashboard.riskExplanation,
       'learnedWeights': dashboard.learnedWeights,
       'predictedRiskWindow': dashboard.predictedRiskWindow,
