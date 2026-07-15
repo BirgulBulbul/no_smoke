@@ -139,41 +139,54 @@ class MentorEngine {
 		required double barrierSuccessRate,
 		required int recentBarrierSuccessCount,
 		required int recentBarrierFailureCount,
+		required int currentDay,
+		required double recentTaskCompletionRate,
 	}) {
 		final dayPart = _resolveDayPart(
 			predictedWindow: predictedWindow,
 			riskyHours: riskyHours,
 		);
-		final baseCount = riskScore >= 75
-			? 4
-			: riskScore >= 55
-			? 3
-			: 2;
-		var count = recentFailureCount > recentSuccessCount
-			? (baseCount + 1).clamp(2, 5)
-			: baseCount;
+		final phase = _resolveBarrierPhase(currentDay);
+		var minMinutes = phase.$1;
+		var maxMinutes = phase.$2;
+		var count = phase.$3;
 
-		var minMax = _barrierMinuteRange(riskScore, dayPart);
-		var minMinutes = minMax.$1;
-		var maxMinutes = minMax.$2;
+		final barrierScore = _dailyBarrierScore(
+			barrierSuccessRate: barrierSuccessRate,
+			recentTaskCompletionRate: recentTaskCompletionRate,
+		);
 
-		if (barrierSuccessRate >= 0.7) {
-			minMinutes += 8;
-			maxMinutes += 25;
-			count = (count - 1).clamp(1, 5);
-		} else if (barrierSuccessRate <= 0.4) {
-			minMinutes -= 4;
-			maxMinutes -= 12;
-			count = (count + 1).clamp(2, 5);
+		if (barrierScore >= 0.80) {
+			minMinutes += 12;
+			maxMinutes += 24;
+			count = (count - 1).clamp(1, 6);
+		} else if (barrierScore < 0.50) {
+			minMinutes -= 8;
+			maxMinutes -= 10;
+			count = (count + 1).clamp(2, 6);
 		}
 
-		if (recentBarrierFailureCount > recentBarrierSuccessCount) {
-			minMinutes -= 3;
-			count = (count + 1).clamp(2, 5);
-		} else if (recentBarrierSuccessCount >= recentBarrierFailureCount + 2) {
-			minMinutes += 4;
-			maxMinutes += 10;
+		if (recentBarrierFailureCount >= 3) {
+			minMinutes -= 10;
+			maxMinutes -= 6;
+			count = (count + 1).clamp(2, 6);
+		}
+		if (recentBarrierSuccessCount >= 5) {
+			minMinutes += 15;
+			maxMinutes += 20;
 			count = (count - 1).clamp(1, 5);
+		}
+
+		if (recentFailureCount > recentSuccessCount) {
+			count = (count + 1).clamp(2, 6);
+		}
+
+		final riskMinMax = _barrierMinuteRange(riskScore, dayPart);
+		if (riskMinMax.$1 > minMinutes) {
+			minMinutes = riskMinMax.$1;
+		}
+		if (riskMinMax.$2 > maxMinutes) {
+			maxMinutes = riskMinMax.$2;
 		}
 
 		if (minMinutes < 8) {
@@ -182,7 +195,7 @@ class MentorEngine {
 		if (maxMinutes < minMinutes + 15) {
 			maxMinutes = minMinutes + 15;
 		}
-		minMax = (minMinutes, maxMinutes);
+		final minMax = (minMinutes, maxMinutes);
 
 		final commands = <String>[];
 		for (var i = 0; i < count; i++) {
@@ -201,6 +214,28 @@ class MentorEngine {
 		}
 
 		return commands.take(5).toList();
+	}
+
+	(int, int, int) _resolveBarrierPhase(int currentDay) {
+		if (currentDay <= 14) {
+			return (10, 30, 5);
+		}
+		if (currentDay <= 42) {
+			return (20, 45, 4);
+		}
+		if (currentDay <= 90) {
+			return (35, 75, 3);
+		}
+		return (60, 150, 3);
+	}
+
+	double _dailyBarrierScore({
+		required double barrierSuccessRate,
+		required double recentTaskCompletionRate,
+	}) {
+		final normalizedBarrier = barrierSuccessRate.clamp(0.0, 1.0);
+		final normalizedTask = recentTaskCompletionRate.clamp(0.0, 1.0);
+		return (0.6 * normalizedBarrier) + (0.4 * normalizedTask);
 	}
 
 	(int, int) _barrierMinuteRange(int riskScore, String dayPart) {

@@ -1332,6 +1332,9 @@ class StorageService {
     final barrierSuccessRate = totalBarrierOutcomes == 0
       ? 0.5
       : (barrierOutcomeSummary['successCount'] ?? 0) / totalBarrierOutcomes;
+    final recentTaskCompletionRate = _recentTaskCompletionRate(taskHistory);
+    final dailyBarrierScore =
+      (0.6 * barrierSuccessRate) + (0.4 * recentTaskCompletionRate);
 
     if (recentBarrierFailureCount >= recentBarrierSuccessCount + 2) {
       dynamicRisk = (dynamicRisk + 6).clamp(0, 100).toInt();
@@ -1446,6 +1449,8 @@ class StorageService {
       barrierSuccessRate: barrierSuccessRate,
       recentBarrierSuccessCount: recentBarrierSuccessCount,
       recentBarrierFailureCount: recentBarrierFailureCount,
+      currentDay: adaptivePlan.currentDay,
+      recentTaskCompletionRate: recentTaskCompletionRate,
     );
 
     final riskExplanation = _behaviorEngine.buildRiskExplanation(
@@ -1459,6 +1464,9 @@ class StorageService {
     riskExplanation.add('Haftalik anket skoru: $weeklyRiskScore ($weeklyRiskLevel)');
     riskExplanation.add('Komut dengeleme modu: $commandMixMode');
     riskExplanation.add('Gunluk komut adedi: $adaptiveCommandCount');
+    riskExplanation.add(
+      'Gunluk bariyer skoru: %${(dailyBarrierScore * 100).round()} (formul: 0.6*bariyer + 0.4*gorev)',
+    );
     riskExplanation.add(
       'Sure bariyeri uyumu: %${(barrierSuccessRate * 100).round()} (son: $recentBarrierSuccessCount basarili / $recentBarrierFailureCount basarisiz)',
     );
@@ -1641,6 +1649,22 @@ class StorageService {
       'recentSuccessCount': recentSuccessCount,
       'recentFailureCount': recentFailureCount,
     };
+  }
+
+  double _recentTaskCompletionRate(List<TaskHistory> taskHistory) {
+    if (taskHistory.isEmpty) {
+      return 0.5;
+    }
+
+    final recent = taskHistory.length > 10
+        ? taskHistory.sublist(taskHistory.length - 10)
+        : taskHistory;
+    if (recent.isEmpty) {
+      return 0.5;
+    }
+
+    final completed = recent.where((item) => item.completed).length;
+    return completed / recent.length;
   }
 
   bool _isWithinWindow({
