@@ -116,7 +116,7 @@ class BehaviorEngine {
   int calculateConsecutiveSmokingScore({String? habit, String? count}) {
     if (habit == null ||
         habit.trim().isEmpty ||
-        _normalizeText(habit) == 'Hayir') {
+        _normalizeText(habit) == 'hayir') {
       return 0;
     }
     return _consecutiveSmokingScores[count?.trim() ?? ''] ?? 0;
@@ -125,7 +125,7 @@ class BehaviorEngine {
   String summarizeConsecutiveSmoking({String? habit, String? count}) {
     if (habit == null ||
         habit.trim().isEmpty ||
-        _normalizeText(habit) == 'Hayir') {
+        _normalizeText(habit) == 'hayir') {
       return 'Hayır';
     }
     if (count == null || count.trim().isEmpty) {
@@ -1295,7 +1295,8 @@ class BehaviorEngine {
         .replaceAll('ü', 'u')
         .replaceAll('Ü', 'U')
         .replaceAll('ç', 'c')
-        .replaceAll('Ç', 'C');
+          .replaceAll('Ç', 'C')
+          .toLowerCase();
   }
 
   String? _groupHour(String? hardestHour) {

@@ -257,6 +257,7 @@ class RiskResultPage extends StatelessWidget {
               width: double.infinity,
               height: 60,
               child: ElevatedButton(
+                key: const ValueKey('risk_result_continue_button'),
                 onPressed: () async {
                   try {
                     final storage = StorageService();

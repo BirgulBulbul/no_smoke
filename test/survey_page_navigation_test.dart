@@ -77,10 +77,13 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(ElevatedButton).last);
+    final continueButton = find.byKey(const ValueKey('risk_result_continue_button'));
+    await tester.ensureVisible(continueButton);
+    await tester.tap(continueButton);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
 
     expect(find.byType(HomePage), findsOneWidget);
     expect(find.text('Tüm geçmiş anketleri gör'), findsNothing);
@@ -143,6 +146,6 @@ void main() {
     await tester.tap(continueButton);
     await tester.pump();
 
-    expect(find.text('Lütfen Ad alanını doldurun.'), findsOneWidget);
+    expect(find.text('Lütfen ad alanını doldurun.'), findsOneWidget);
   });
 }

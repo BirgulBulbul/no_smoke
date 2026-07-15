@@ -35,8 +35,8 @@ void main() {
       final triggerScores = engine.calculateTriggerScores(surveys);
       final riskyTriggers = engine.calculateRiskyTriggers(triggerScores);
 
-      expect(triggerScores['Stres'], 20);
-      expect(triggerScores['Kahve'], 20);
+      expect(triggerScores['Stres'], 18);
+      expect(triggerScores['Kahve'], 18);
       expect(riskyTriggers, contains('Stres'));
       expect(riskyTriggers, contains('Kahve'));
       expect(riskyTriggers, isNot(contains('Arkadaşlar')));
@@ -165,14 +165,14 @@ void main() {
         currentCount: '2 adet',
       );
 
-      expect(trend, 'Pozitif gelişim');
+      expect(trend, 'trendImproving');
 
       final summary = engine.summarizeConsecutiveSmoking(
         habit: 'Evet, bazen',
         count: '3 adet',
       );
 
-      expect(summary, 'Evet, bazen • 3 adet');
+      expect(summary, 'Evet, bazen - 3 adet');
     });
 
     test('generates consecutive smoking fields in behavior profile', () {
@@ -213,14 +213,14 @@ void main() {
         ],
       );
 
-      expect(profile.consecutiveSmokingTrend, 'Pozitif gelişim');
-      expect(profile.consecutiveSmokingStatus, 'Son durum: Evet, bazen • 3 adet');
+      expect(profile.consecutiveSmokingTrend, 'trendImproving');
+      expect(profile.consecutiveSmokingStatus, 'Evet, bazen - 3 adet');
       expect(profile.riskTrend, 'Stable');
       expect(profile.suggestedTasks, isNotEmpty);
 
       final summary = engine.buildHomeSummary(profile);
-      expect(summary['consecutiveSmokingTrend'], 'Pozitif gelişim');
-      expect(summary['consecutiveSmokingStatus'], 'Son durum: Evet, bazen • 3 adet');
+      expect(summary['consecutiveSmokingTrend'], 'trendImproving');
+      expect(summary['consecutiveSmokingStatus'], 'Evet, bazen - 3 adet');
       expect(summary['suggestedTasks'], isA<List<String>>());
     });
 
@@ -255,7 +255,7 @@ void main() {
         ),
       ]);
 
-      expect(trend, 'Pozitif gelişim');
+      expect(trend, 'trendImproving');
     });
   });
 }

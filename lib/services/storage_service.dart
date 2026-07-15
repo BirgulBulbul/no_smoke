@@ -64,7 +64,8 @@ class StorageService {
             taskTitle TEXT,
             taskResult TEXT,
             consecutiveSmokingHabit TEXT,
-            consecutiveSmokingCount TEXT
+            consecutiveSmokingCount TEXT,
+            quitDate TEXT
           )
         ''');
         await _ensureSettingsTable(db);
@@ -82,6 +83,7 @@ class StorageService {
         await _ensureColumn(db, 'taskResult', 'TEXT');
         await _ensureColumn(db, 'consecutiveSmokingHabit', 'TEXT');
         await _ensureColumn(db, 'consecutiveSmokingCount', 'TEXT');
+        await _ensureColumn(db, 'quitDate', 'TEXT');
         await _ensureSettingsTable(db);
         await _ensureSurveyDetailsTable(db);
         await _ensureProfileSnapshotTable(db);
